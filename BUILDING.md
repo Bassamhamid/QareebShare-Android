@@ -1,16 +1,32 @@
-# البناء
+# البناء والفحص
 
-## GitHub Actions
+## المسار المعتمد: GitHub Actions
 
-المسار الموصى به لهذا المشروع. يكفي دفع الملفات إلى فرع `main`.
+ملف Workflow يعمل يدوياً فقط أثناء التطوير:
 
-## Linux أو Termux
+`Actions → Android Build → Run workflow`
 
-الملف `gradlew` مشغّل خفيف يتحقق من SHA-256 ثم ينزّل Gradle 9.4.1 عند أول استخدام فقط:
+ينفذ:
+
+- فحص عدم وجود مكتبات تشغيل خارجية.
+- Lint لنسخة Debug.
+- بناء Debug APK.
+- بناء Release APK مصغر بواسطة R8.
+- رفع النواتج داخل Artifact باسم `qareeb-share-apks` لمدة 14 يوماً.
+
+## الفحص من Termux دون Android SDK
 
 ```bash
-pkg install openjdk-17 curl unzip -y
-./gradlew :app:assembleDebug
+cd "$HOME/QareebShare-Android"
+./scripts/check-final.sh
 ```
 
-يتطلب البناء المحلي Android SDK مع منصة API 37. لذلك يظل GitHub Actions هو المسار الأبسط من الهاتف.
+هذا الفحص لا ينزّل Gradle ولا يبني APK ولا يشغّل GitHub Actions.
+
+## بناء محلي اختياري
+
+يتطلب JDK 17 وAndroid SDK ومنصة API 37:
+
+```bash
+./gradlew :app:verifyNoRuntimeDependencies :app:lintDebug :app:assembleDebug :app:assembleRelease
+```

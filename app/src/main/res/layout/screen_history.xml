@@ -3,15 +3,93 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/background"
-    android:gravity="center_horizontal"
     android:layoutDirection="rtl"
     android:orientation="vertical"
     android:padding="@dimen/screen_padding">
 
-    <ImageButton android:id="@+id/button_back" android:layout_width="48dp" android:layout_height="48dp" android:layout_gravity="start" android:background="@drawable/bg_brand_soft" android:contentDescription="@string/back" android:padding="12dp" android:src="@drawable/ic_back" />
-    <TextView style="@style/Text.Title" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="20dp" android:text="@string/history_title" />
+    <ImageButton
+        android:id="@+id/button_back"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_gravity="start"
+        android:background="@drawable/bg_brand_soft"
+        android:contentDescription="@string/back"
+        android:padding="12dp"
+        android:src="@drawable/ic_back" />
 
-    <ImageView android:layout_width="84dp" android:layout_height="84dp" android:layout_marginTop="54dp" android:background="@drawable/bg_brand_soft" android:contentDescription="@string/history" android:padding="24dp" android:src="@drawable/ic_history" />
-    <TextView style="@style/Text.CardTitle" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="20dp" android:text="@string/history_empty" />
-    <TextView style="@style/Text.CardBody" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:gravity="center" android:text="@string/history_empty_description" />
+    <TextView
+        style="@style/Text.Title"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="14dp"
+        android:text="@string/history_title" />
+
+    <TextView
+        style="@style/Text.Subtitle"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:text="@string/history_subtitle" />
+
+    <TextView
+        android:id="@+id/button_clear_history"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="end"
+        android:layout_marginTop="12dp"
+        android:background="@drawable/bg_secondary_button"
+        android:clickable="true"
+        android:focusable="true"
+        android:paddingStart="16dp"
+        android:paddingTop="10dp"
+        android:paddingEnd="16dp"
+        android:paddingBottom="10dp"
+        android:text="@string/clear_history"
+        android:textColor="@color/brand_dark"
+        android:textStyle="bold" />
+
+    <LinearLayout
+        android:id="@+id/history_empty_state"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:gravity="center"
+        android:orientation="vertical">
+
+        <ImageView
+            android:layout_width="84dp"
+            android:layout_height="84dp"
+            android:background="@drawable/bg_brand_soft"
+            android:contentDescription="@string/history"
+            android:padding="24dp"
+            android:src="@drawable/ic_history" />
+
+        <TextView
+            style="@style/Text.CardTitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:text="@string/history_empty" />
+
+        <TextView
+            style="@style/Text.CardBody"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:gravity="center"
+            android:text="@string/history_empty_description" />
+    </LinearLayout>
+
+    <ListView
+        android:id="@+id/list_history"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_marginTop="12dp"
+        android:layout_weight="1"
+        android:clipToPadding="false"
+        android:divider="@color/transparent"
+        android:dividerHeight="10dp"
+        android:listSelector="@android:color/transparent"
+        android:paddingBottom="12dp"
+        android:visibility="gone" />
 </LinearLayout>

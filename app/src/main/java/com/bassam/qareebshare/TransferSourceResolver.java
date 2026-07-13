@@ -7,16 +7,19 @@ import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.net.Uri;
+import android.os.Build;
 import android.provider.OpenableColumns;
 
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
-import java.util.UUID;
 
 final class TransferSourceResolver {
     private TransferSourceResolver() {
@@ -39,6 +42,19 @@ final class TransferSourceResolver {
             resolveApplication(packageManager, packageName, result);
         }
         return result;
+    }
+
+    static String transferId(List<TransferSource> sources) {
+        StringBuilder builder = new StringBuilder("QSH4|");
+        for (TransferSource source : sources) {
+            TransferItemInfo item = source.info;
+            builder.append(item.id).append('|')
+                    .append(item.size).append('|')
+                    .append(item.kind).append('|')
+                    .append(item.packageName).append('|')
+                    .append(item.partName).append(';');
+        }
+        return stableId(builder.toString());
     }
 
     private static TransferSource resolveDocument(ContentResolver resolver, Uri uri) throws IOException {
@@ -69,8 +85,9 @@ final class TransferSourceResolver {
         if (mime == null || mime.trim().isEmpty()) {
             mime = "application/octet-stream";
         }
+        String id = stableId("document|" + uri + "|" + safeName + "|" + size);
         TransferItemInfo info = new TransferItemInfo(
-                UUID.randomUUID().toString(),
+                id,
                 safeName,
                 mime,
                 size,
@@ -99,26 +116,39 @@ final class TransferSourceResolver {
             String label = labelSequence == null ? packageName : labelSequence.toString();
             label = FileNameSanitizer.sanitize(label, packageName);
 
-            String versionName = "";
-            try {
-                PackageInfo packageInfo = packageManager.getPackageInfo(packageName, 0);
-                if (packageInfo.versionName != null) {
-                    versionName = packageInfo.versionName.trim();
-                }
-            } catch (PackageManager.NameNotFoundException ignored) {
-            }
-
+            PackageInfo packageInfo = packageManager.getPackageInfo(packageName, 0);
+            String versionName = packageInfo.versionName == null ? "" : packageInfo.versionName.trim();
+            long versionCode = Build.VERSION.SDK_INT >= Build.VERSION_CODES.P
+                    ? packageInfo.getLongVersionCode() : packageInfo.versionCode;
             String stem = versionName.isEmpty() ? label : label + "-" + versionName;
-            addApkPart(target, applicationInfo.sourceDir, stem + ".apk", packageName, label, "base");
+
+            addApkPart(
+                    target,
+                    applicationInfo.sourceDir,
+                    stem + "-base.apk",
+                    packageName,
+                    versionCode,
+                    "base.apk"
+            );
 
             String[] splitSourceDirs = applicationInfo.splitSourceDirs;
             if (splitSourceDirs != null) {
                 for (int index = 0; index < splitSourceDirs.length; index++) {
                     String sourcePath = splitSourceDirs[index];
                     String originalName = new File(sourcePath).getName();
-                    String part = FileNameSanitizer.sanitize(originalName, "split-" + (index + 1) + ".apk");
+                    String part = FileNameSanitizer.sanitize(
+                            originalName,
+                            "split-" + (index + 1) + ".apk"
+                    );
                     String outputName = stem + "-" + part;
-                    addApkPart(target, sourcePath, outputName, packageName, label, part);
+                    addApkPart(
+                            target,
+                            sourcePath,
+                            outputName,
+                            packageName,
+                            versionCode,
+                            part
+                    );
                 }
             }
         } catch (PackageManager.NameNotFoundException error) {
@@ -131,23 +161,41 @@ final class TransferSourceResolver {
             String sourcePath,
             String displayName,
             String packageName,
-            String appLabel,
+            long versionCode,
             String partName
     ) throws IOException {
         File file = new File(sourcePath == null ? "" : sourcePath);
         if (!file.isFile() || !file.canRead()) {
             throw new IOException("Application package is not readable");
         }
+        String id = stableId(
+                "application|" + packageName + "|" + versionCode + "|"
+                        + partName + "|" + file.length()
+        );
         TransferItemInfo info = new TransferItemInfo(
-                UUID.randomUUID().toString(),
+                id,
                 FileNameSanitizer.sanitize(displayName, "application.apk"),
                 "application/vnd.android.package-archive",
                 file.length(),
                 TransferItemInfo.KIND_APP,
-                appLabel,
+                packageName,
                 packageName,
                 partName
         );
         target.add(new TransferSource(info, () -> new FileInputStream(file)));
+    }
+
+    private static String stableId(String value) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(value.getBytes(StandardCharsets.UTF_8));
+            StringBuilder result = new StringBuilder(40);
+            for (int index = 0; index < 20; index++) {
+                result.append(String.format(java.util.Locale.US, "%02x", hash[index] & 0xff));
+            }
+            return result.toString();
+        } catch (NoSuchAlgorithmException impossible) {
+            return Integer.toHexString(value.hashCode());
+        }
     }
 }

@@ -4,6 +4,7 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.ClipData;
 import android.content.Intent;
+import android.content.DialogInterface;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.content.res.Configuration;
@@ -54,6 +55,8 @@ public final class MainActivity extends Activity implements WifiDirectEvents {
     private Screen currentScreen = Screen.HOME;
     private PendingNearbyAction pendingNearbyAction = PendingNearbyAction.NONE;
     private WifiDirectController wifiDirectController;
+    private TransferHistoryStore historyStore;
+    private AlertDialog pairingDialog;
     private boolean preparingSources;
 
     private TextView selectedFilesView;
@@ -73,7 +76,17 @@ public final class MainActivity extends Activity implements WifiDirectEvents {
         super.onCreate(savedInstanceState);
         configureSystemBars();
         wifiDirectController = new WifiDirectController(this, this);
+        historyStore = new TransferHistoryStore(getApplicationContext());
+        backgroundExecutor.execute(() -> ReceivedFileStore.cleanupStale(getApplicationContext()));
         showHome();
+        handleIncomingShareIntent(getIntent());
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        handleIncomingShareIntent(intent);
     }
 
     @Override
@@ -168,6 +181,135 @@ public final class MainActivity extends Activity implements WifiDirectEvents {
         clearScreenReferences();
         setContentView(R.layout.screen_history);
         bindBackButton();
+
+        View emptyState = findViewById(R.id.history_empty_state);
+        View clearButton = findViewById(R.id.button_clear_history);
+        ListView list = findViewById(R.id.list_history);
+        HistoryAdapter adapter = new HistoryAdapter(this);
+        list.setAdapter(adapter);
+        list.setOnItemClickListener((parent, view, position, id) -> {
+            TransferHistoryStore.Entry entry = adapter.getItem(position);
+            if (entry.direction == TransferHistoryStore.DIRECTION_RECEIVE && entry.appCount > 0) {
+                showInstallOptions(entry.transferId);
+            } else if (!entry.location.isEmpty()) {
+                Toast.makeText(
+                        this,
+                        getString(R.string.saved_in_location, entry.location),
+                        Toast.LENGTH_LONG
+                ).show();
+            }
+        });
+        clearButton.setOnClickListener(v -> new AlertDialog.Builder(this)
+                .setTitle(R.string.clear_history)
+                .setMessage(R.string.clear_history_confirmation)
+                .setPositiveButton(R.string.clear_history, (dialog, which) -> {
+                    historyStore.clearHistory();
+                    showHistory();
+                })
+                .setNegativeButton(R.string.cancel, null)
+                .show());
+
+        backgroundExecutor.execute(() -> {
+            List<TransferHistoryStore.Entry> entries = historyStore.listEntries();
+            runOnUiThread(() -> {
+                if (isFinishing() || currentScreen != Screen.HISTORY) {
+                    return;
+                }
+                adapter.replace(entries);
+                boolean empty = entries.isEmpty();
+                emptyState.setVisibility(empty ? View.VISIBLE : View.GONE);
+                list.setVisibility(empty ? View.GONE : View.VISIBLE);
+                clearButton.setVisibility(empty ? View.GONE : View.VISIBLE);
+            });
+        });
+    }
+
+    private void showInstallOptions(String transferId) {
+        backgroundExecutor.execute(() -> {
+            List<TransferHistoryStore.AppPackage> packages = historyStore.listAppPackages(transferId);
+            runOnUiThread(() -> {
+                if (isFinishing() || isDestroyed()) {
+                    return;
+                }
+                if (packages.isEmpty()) {
+                    Toast.makeText(this, R.string.install_files_missing, Toast.LENGTH_LONG).show();
+                    return;
+                }
+                if (packages.size() == 1) {
+                    confirmInstall(packages.get(0));
+                    return;
+                }
+                String[] labels = new String[packages.size()];
+                for (int index = 0; index < packages.size(); index++) {
+                    labels[index] = packages.get(index).label;
+                }
+                new AlertDialog.Builder(this)
+                        .setTitle(R.string.choose_app_to_install)
+                        .setItems(labels, (dialog, which) -> confirmInstall(packages.get(which)))
+                        .setNegativeButton(R.string.cancel, null)
+                        .show();
+            });
+        });
+    }
+
+    private void confirmInstall(TransferHistoryStore.AppPackage appPackage) {
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.install_application)
+                .setMessage(getString(R.string.install_application_confirmation, appPackage.label))
+                .setPositiveButton(R.string.install, (dialog, which) ->
+                        AppInstaller.install(this, appPackage))
+                .setNegativeButton(R.string.cancel, null)
+                .show();
+    }
+
+    private void handleIncomingShareIntent(Intent intent) {
+        if (intent == null) {
+            return;
+        }
+        String action = intent.getAction();
+        boolean handled = false;
+        if (Intent.ACTION_SEND.equals(action)) {
+            Uri uri;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                uri = intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri.class);
+            } else {
+                //noinspection deprecation
+                uri = intent.getParcelableExtra(Intent.EXTRA_STREAM);
+            }
+            if (uri != null) {
+                addSelectedFile(uri);
+                handled = true;
+            }
+        } else if (Intent.ACTION_SEND_MULTIPLE.equals(action)) {
+            ArrayList<Uri> uris;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                uris = intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM, Uri.class);
+            } else {
+                //noinspection deprecation
+                uris = intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM);
+            }
+            if (uris != null) {
+                for (Uri uri : uris) {
+                    addSelectedFile(uri);
+                    handled = true;
+                }
+            }
+        }
+        if (!handled && intent.getClipData() != null) {
+            ClipData clip = intent.getClipData();
+            for (int index = 0; index < clip.getItemCount(); index++) {
+                Uri uri = clip.getItemAt(index).getUri();
+                if (uri != null) {
+                    addSelectedFile(uri);
+                    handled = true;
+                }
+            }
+        }
+        if (handled) {
+            showSend();
+            updateSelectedFilesText();
+            intent.setAction(null);
+        }
     }
 
     private void showApps() {
@@ -578,6 +720,41 @@ public final class MainActivity extends Activity implements WifiDirectEvents {
     }
 
     @Override
+    public void onPairingRequired(String peerName, String pairingCode) {
+        if (isFinishing() || isDestroyed()) {
+            wifiDirectController.respondToPairing(false);
+            return;
+        }
+        dismissPairingDialog();
+        String formattedCode = pairingCode.length() == 6
+                ? pairingCode.substring(0, 3) + " " + pairingCode.substring(3)
+                : pairingCode;
+        pairingDialog = new AlertDialog.Builder(this)
+                .setTitle(R.string.pairing_title)
+                .setMessage(getString(R.string.pairing_message, peerName, formattedCode))
+                .setCancelable(false)
+                .setPositiveButton(R.string.pairing_confirm, (dialog, which) -> {
+                    pairingDialog = null;
+                    wifiDirectController.respondToPairing(true);
+                    setSendState(R.string.establishing_secure_channel, true);
+                    setReceiveState(R.string.establishing_secure_channel, true);
+                })
+                .setNegativeButton(R.string.cancel, (dialog, which) -> {
+                    pairingDialog = null;
+                    wifiDirectController.respondToPairing(false);
+                })
+                .create();
+        pairingDialog.show();
+    }
+
+    @Override
+    public void onPairingRejected() {
+        dismissPairingDialog();
+        setSendState(R.string.pairing_rejected, false);
+        setReceiveState(R.string.pairing_rejected, false);
+    }
+
+    @Override
     public void onHandshakeCompleted(String peerName) {
         if (currentScreen == Screen.SEND && sendStatusView != null) {
             sendStatusView.setText(getString(R.string.connected_waiting_acceptance, peerName));
@@ -635,8 +812,15 @@ public final class MainActivity extends Activity implements WifiDirectEvents {
     }
 
     @Override
-    public void onTransferStarted(boolean sending, int itemCount, long totalBytes) {
-        int message = sending ? R.string.sending_started : R.string.receiving_started;
+    public void onTransferStarted(
+            boolean sending,
+            int itemCount,
+            long totalBytes,
+            long resumedBytes
+    ) {
+        int message = resumedBytes > 0L
+                ? R.string.resuming_transfer
+                : (sending ? R.string.sending_started : R.string.receiving_started);
         if (sending && currentScreen == Screen.SEND) {
             sendStatusView.setText(getString(message, itemCount));
             configureProgress(sendProgressView, true, totalBytes <= 0L, 0);
@@ -713,7 +897,9 @@ public final class MainActivity extends Activity implements WifiDirectEvents {
             boolean sending,
             int itemCount,
             long transferredBytes,
-            String saveLocation
+            String saveLocation,
+            String transferId,
+            int appCount
     ) {
         if (sending && currentScreen == Screen.SEND && sendStatusView != null) {
             sendStatusView.setText(getString(
@@ -734,6 +920,15 @@ public final class MainActivity extends Activity implements WifiDirectEvents {
             }
         }
         Toast.makeText(this, R.string.transfer_completed_toast, Toast.LENGTH_LONG).show();
+        if (!sending && appCount > 0 && transferId != null && !transferId.isEmpty()) {
+            new AlertDialog.Builder(this)
+                    .setTitle(R.string.apps_received_title)
+                    .setMessage(getString(R.string.apps_received_message, appCount))
+                    .setPositiveButton(R.string.choose_app_to_install, (dialog, which) ->
+                            showInstallOptions(transferId))
+                    .setNegativeButton(R.string.later, null)
+                    .show();
+        }
     }
 
     @Override
@@ -744,6 +939,7 @@ public final class MainActivity extends Activity implements WifiDirectEvents {
 
     @Override
     public void onDisconnected() {
+        dismissPairingDialog();
         setSendState(R.string.connection_stopped, false);
         setReceiveState(R.string.receive_stopped, false);
         if (receivePeerView != null) {
@@ -753,7 +949,16 @@ public final class MainActivity extends Activity implements WifiDirectEvents {
 
     @Override
     public void onWifiDirectError(int messageResId) {
+        dismissPairingDialog();
         showNearbyError(messageResId);
+    }
+
+    private void dismissPairingDialog() {
+        AlertDialog dialog = pairingDialog;
+        pairingDialog = null;
+        if (dialog != null && dialog.isShowing()) {
+            dialog.dismiss();
+        }
     }
 
     @Override
@@ -767,8 +972,10 @@ public final class MainActivity extends Activity implements WifiDirectEvents {
 
     @Override
     protected void onDestroy() {
+        dismissPairingDialog();
         wifiDirectController.release();
         backgroundExecutor.shutdownNow();
+        historyStore.close();
         super.onDestroy();
     }
 }

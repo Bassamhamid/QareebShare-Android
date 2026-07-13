@@ -115,4 +115,37 @@
     <string name="notification_preparing_items">جارٍ تجهيز %1$d عنصر</string>
     <string name="cancel_transfer">إلغاء</string>
 
+    <string name="pairing_title">تأكيد الهاتف القريب</string>
+    <string name="pairing_message">تأكد أن الرمز نفسه ظاهر على هاتف %1$s، ثم وافق على الهاتفين.
+
+%2$s</string>
+    <string name="pairing_confirm">الرمز متطابق</string>
+    <string name="pairing_rejected">لم يتم تأكيد رمز الهاتفين.</string>
+    <string name="secure_connection_failed">تعذر إنشاء اتصال مشفّر آمن. أعد المحاولة من الهاتفين.</string>
+    <string name="resuming_transfer">جارٍ استكمال نقل %1$d عنصر من الموضع السابق</string>
+    <string name="notification_resuming">جارٍ استكمال النقل السابق</string>
+
+    <string name="history_subtitle">يحفظ السجل ملخص العمليات المكتملة فقط، ولا يحذف ملفاتك.</string>
+    <string name="clear_history">مسح السجل</string>
+    <string name="clear_history_confirmation">سيُمسح سجل العمليات فقط، ولن تُحذف الملفات والتطبيقات المستلمة.</string>
+    <string name="history_sent_to">إرسال إلى %1$s</string>
+    <string name="history_received_from">استقبال من %1$s</string>
+    <string name="history_entry_details">%1$d عنصر • %2$s</string>
+    <string name="history_apps_installable">%1$d تطبيق قابل للتثبيت</string>
+
+    <string name="apps_received_title">تم استلام التطبيقات</string>
+    <string name="apps_received_message">تم استلام %1$d تطبيق بكل أجزائه. يمكنك تثبيته الآن أو لاحقاً من السجل.</string>
+    <string name="choose_app_to_install">اختيار تطبيق للتثبيت</string>
+    <string name="install_application">تثبيت التطبيق</string>
+    <string name="install_application_confirmation">سيطلب أندرويد تأكيد تثبيت %1$s. لا يتم أي تثبيت تلقائي.</string>
+    <string name="install">تثبيت</string>
+    <string name="later">لاحقاً</string>
+    <string name="cancel">إلغاء</string>
+    <string name="allow_install_then_retry">اسمح لقريب شير بتثبيت التطبيقات، ثم اضغط على العملية من السجل مرة أخرى.</string>
+    <string name="install_permission_unavailable">تعذر فتح إعداد السماح بتثبيت التطبيقات.</string>
+    <string name="preparing_app_install">جارٍ تجهيز ملفات التطبيق للتثبيت…</string>
+    <string name="install_files_missing">ملفات التطبيق غير موجودة أو نُقلت من مكانها.</string>
+    <string name="install_failed">تعذر تثبيت التطبيق.</string>
+    <string name="install_completed">تم تثبيت التطبيق بنجاح.</string>
+
 </resources>

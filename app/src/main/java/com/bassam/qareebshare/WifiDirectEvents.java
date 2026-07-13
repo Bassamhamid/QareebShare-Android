@@ -15,11 +15,15 @@ interface WifiDirectEvents {
 
     void onLinkEstablished(boolean groupOwner);
 
+    void onPairingRequired(String peerName, String pairingCode);
+
+    void onPairingRejected();
+
     void onHandshakeCompleted(String peerName);
 
     void onIncomingOffer(String peerName, List<TransferItemInfo> items, long totalBytes);
 
-    void onTransferStarted(boolean sending, int itemCount, long totalBytes);
+    void onTransferStarted(boolean sending, int itemCount, long totalBytes, long resumedBytes);
 
     void onTransferProgress(
             boolean sending,
@@ -37,7 +41,9 @@ interface WifiDirectEvents {
             boolean sending,
             int itemCount,
             long transferredBytes,
-            String saveLocation
+            String saveLocation,
+            String transferId,
+            int appCount
     );
 
     void onTransferRejected();

@@ -71,6 +71,10 @@ final class WifiDirectController {
                 : Collections.unmodifiableList(new ArrayList<>(sources));
     }
 
+    void respondToPairing(boolean accept) {
+        transferEngine.respondToPairing(accept);
+    }
+
     void respondToOffer(boolean accept) {
         transferEngine.respondToOffer(accept);
     }
@@ -279,6 +283,18 @@ final class WifiDirectController {
         Context appContext = activity.getApplicationContext();
         return new TransferEngine.Callback() {
             @Override
+            public void onPairingRequired(String peerName, String pairingCode) {
+                mainHandler.post(() -> events.onPairingRequired(peerName, pairingCode));
+            }
+
+            @Override
+            public void onPairingRejected() {
+                transportStarted = false;
+                TransferService.stop(appContext);
+                mainHandler.post(events::onPairingRejected);
+            }
+
+            @Override
             public void onConnected(String peerName) {
                 mainHandler.post(() -> events.onHandshakeCompleted(peerName));
             }
@@ -293,12 +309,24 @@ final class WifiDirectController {
             }
 
             @Override
-            public void onTransferStarted(boolean sending, int itemCount, long totalBytes) {
+            public void onTransferStarted(
+                    boolean sending,
+                    int itemCount,
+                    long totalBytes,
+                    long resumedBytes
+            ) {
                 String title = activity.getString(sending
                         ? R.string.notification_sending : R.string.notification_receiving);
-                String text = activity.getString(R.string.notification_preparing_items, itemCount);
+                String text = resumedBytes > 0L
+                        ? activity.getString(R.string.notification_resuming)
+                        : activity.getString(R.string.notification_preparing_items, itemCount);
                 TransferService.start(appContext, title, text, totalBytes <= 0L);
-                mainHandler.post(() -> events.onTransferStarted(sending, itemCount, totalBytes));
+                mainHandler.post(() -> events.onTransferStarted(
+                        sending,
+                        itemCount,
+                        totalBytes,
+                        resumedBytes
+                ));
             }
 
             @Override
@@ -349,19 +377,25 @@ final class WifiDirectController {
                     boolean sending,
                     int itemCount,
                     long transferredBytes,
-                    String saveLocation
+                    String saveLocation,
+                    String transferId,
+                    int appCount
             ) {
+                transportStarted = false;
                 TransferService.stop(appContext);
                 mainHandler.post(() -> events.onTransferCompleted(
                         sending,
                         itemCount,
                         transferredBytes,
-                        saveLocation
+                        saveLocation,
+                        transferId,
+                        appCount
                 ));
             }
 
             @Override
             public void onRejected() {
+                transportStarted = false;
                 TransferService.stop(appContext);
                 mainHandler.post(events::onTransferRejected);
             }
