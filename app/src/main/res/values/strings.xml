@@ -78,4 +78,41 @@
     <string name="unknown_file">ملف</string>
     <string name="unknown_size">الحجم غير معروف</string>
     <string name="permission_unavailable">تعذر الاحتفاظ بإذن قراءة أحد الملفات.</string>
+
+    <string name="preparing_selected_items">جارٍ تجهيز العناصر المختارة…</string>
+    <string name="no_transferable_items">لم يتم العثور على عناصر قابلة للإرسال.</string>
+    <string name="selected_items_unavailable">تعذر فتح أحد العناصر المختارة. أعد اختياره ثم حاول مرة أخرى.</string>
+    <string name="storage_permission_required">يلزم السماح بحفظ الملفات في مجلد التنزيلات.</string>
+    <string name="connected_waiting_acceptance">تم الاتصال بـ %1$s، بانتظار قبول الاستقبال…</string>
+    <string name="waiting_for_receive_approval">وصل طلب إرسال، راجع التفاصيل ثم اختر قبول أو رفض.</string>
+    <string name="receive_offer_title">طلب استقبال</string>
+    <string name="receive_offer_message">يريد %1$s إرسال %2$d عنصر بحجم %3$s. تتضمن الحزمة %4$d ملفات تطبيقات.</string>
+    <string name="accept_receive">قبول</string>
+    <string name="reject_receive">رفض</string>
+    <string name="receive_starting">تم القبول، جارٍ بدء الاستقبال…</string>
+    <string name="receive_rejected">تم رفض طلب الاستقبال.</string>
+    <string name="sending_started">بدأ إرسال %1$d عنصر</string>
+    <string name="receiving_started">بدأ استقبال %1$d عنصر</string>
+    <string name="transfer_progress_known">%1$d من %2$d — %3$s
+%4$s من %5$s • %6$s/ث</string>
+    <string name="transfer_progress_unknown">%1$d من %2$d — %3$s
+تم نقل %4$s • %5$s/ث</string>
+    <string name="transfer_item_verified">تم التحقق من %1$d من %2$d: %3$s</string>
+    <string name="send_completed">اكتمل إرسال %1$d عنصر بنجاح — %2$s</string>
+    <string name="receive_completed">اكتمل استقبال %1$d عنصر بنجاح — %2$s</string>
+    <string name="saved_in_location">تم الحفظ في: %1$s</string>
+    <string name="transfer_completed_toast">اكتملت عملية النقل بنجاح.</string>
+    <string name="transfer_rejected">رفض الهاتف الآخر طلب الإرسال.</string>
+    <string name="transfer_failed">تعذر إكمال النقل. تحقق من قرب الهاتفين ثم أعد المحاولة.</string>
+    <string name="transfer_connection_timeout">انتهت مهلة الاتصال. افتح الاستقبال في الهاتف الآخر وأعد المحاولة.</string>
+    <string name="transfer_cancelled">تم إلغاء عملية النقل.</string>
+
+    <string name="transfer_channel_name">عمليات نقل قريب شير</string>
+    <string name="transfer_channel_description">يعرض تقدم نقل الملفات بين الهاتفين.</string>
+    <string name="transfer_in_progress">جارٍ نقل الملفات</string>
+    <string name="notification_sending">جارٍ الإرسال</string>
+    <string name="notification_receiving">جارٍ الاستقبال</string>
+    <string name="notification_preparing_items">جارٍ تجهيز %1$d عنصر</string>
+    <string name="cancel_transfer">إلغاء</string>
+
 </resources>

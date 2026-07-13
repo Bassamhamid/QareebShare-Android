@@ -1,5 +1,6 @@
 package com.bassam.qareebshare;
 
+import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.content.BroadcastReceiver;
 import android.content.Context;
@@ -20,6 +21,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+@SuppressLint("MissingPermission")
 final class WifiDirectController {
     private final Activity activity;
     private final WifiDirectEvents events;
@@ -27,25 +29,32 @@ final class WifiDirectController {
     private final WifiP2pManager.Channel channel;
     private final IntentFilter intentFilter = new IntentFilter();
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
-    private final LocalHandshake handshake = new LocalHandshake();
+    private final TransferEngine transferEngine;
     private final BroadcastReceiver receiver = new P2pReceiver();
+    private final TransferCancelRegistry.CancelAction cancelAction = this::cancelTransfer;
 
     private final ArrayList<PeerDevice> peers = new ArrayList<>();
+    private List<TransferSource> outgoingSources = Collections.emptyList();
     private boolean receiverRegistered;
-    private boolean handshakeStarted;
+    private boolean transportStarted;
+    private boolean localSender;
 
     WifiDirectController(Activity activity, WifiDirectEvents events) {
         this.activity = activity;
         this.events = events;
-        manager = (WifiP2pManager) activity.getSystemService(Context.WIFI_P2P_SERVICE);
-        channel = manager == null ? null : manager.initialize(activity, activity.getMainLooper(), () -> {
-            events.onWifiDirectError(R.string.connection_channel_lost);
-        });
+        this.transferEngine = new TransferEngine(activity.getApplicationContext());
+        this.manager = (WifiP2pManager) activity.getSystemService(Context.WIFI_P2P_SERVICE);
+        this.channel = manager == null ? null : manager.initialize(
+                activity,
+                activity.getMainLooper(),
+                () -> events.onWifiDirectError(R.string.connection_channel_lost)
+        );
 
         intentFilter.addAction(WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION);
         intentFilter.addAction(WifiP2pManager.WIFI_P2P_PEERS_CHANGED_ACTION);
         intentFilter.addAction(WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION);
         intentFilter.addAction(WifiP2pManager.WIFI_P2P_THIS_DEVICE_CHANGED_ACTION);
+        TransferCancelRegistry.set(cancelAction);
     }
 
     boolean isAvailable() {
@@ -54,6 +63,16 @@ final class WifiDirectController {
 
     List<PeerDevice> currentPeers() {
         return new ArrayList<>(peers);
+    }
+
+    void setOutgoingSources(List<TransferSource> sources) {
+        outgoingSources = sources == null
+                ? Collections.emptyList()
+                : Collections.unmodifiableList(new ArrayList<>(sources));
+    }
+
+    void respondToOffer(boolean accept) {
+        transferEngine.respondToOffer(accept);
     }
 
     void register() {
@@ -80,8 +99,13 @@ final class WifiDirectController {
     }
 
     void discoverPeers() {
+        localSender = true;
         if (!isAvailable()) {
             events.onWifiDirectError(R.string.wifi_direct_not_supported);
+            return;
+        }
+        if (outgoingSources.isEmpty()) {
+            events.onWifiDirectError(R.string.no_transferable_items);
             return;
         }
         events.onDiscoveryStarted();
@@ -99,6 +123,7 @@ final class WifiDirectController {
     }
 
     void connect(PeerDevice peer) {
+        localSender = true;
         if (!isAvailable() || peer == null || peer.address.isEmpty()) {
             return;
         }
@@ -123,11 +148,13 @@ final class WifiDirectController {
     }
 
     void startReceiver() {
+        localSender = false;
+        outgoingSources = Collections.emptyList();
         if (!isAvailable()) {
             events.onWifiDirectError(R.string.wifi_direct_not_supported);
             return;
         }
-        stopHandshake();
+        stopTransport();
         manager.removeGroup(channel, new WifiP2pManager.ActionListener() {
             @Override
             public void onSuccess() {
@@ -141,10 +168,17 @@ final class WifiDirectController {
         });
     }
 
+    void cancelTransfer() {
+        transferEngine.cancel();
+        TransferService.stop(activity.getApplicationContext());
+        transportStarted = false;
+        mainHandler.post(() -> events.onWifiDirectError(R.string.transfer_cancelled));
+    }
+
     void stopAll() {
         peers.clear();
         events.onPeersUpdated(Collections.emptyList());
-        stopHandshake();
+        stopTransport();
         if (!isAvailable()) {
             events.onDisconnected();
             return;
@@ -176,7 +210,8 @@ final class WifiDirectController {
     void release() {
         unregister();
         stopAll();
-        handshake.shutdown();
+        transferEngine.shutdown();
+        TransferCancelRegistry.clear(cancelAction);
     }
 
     private void createReceiverGroup() {
@@ -224,39 +259,126 @@ final class WifiDirectController {
             return;
         }
         events.onLinkEstablished(info.isGroupOwner);
-        if (handshakeStarted) {
+        if (transportStarted) {
             return;
         }
-        handshakeStarted = true;
+        transportStarted = true;
 
-        LocalHandshake.Callback callback = new LocalHandshake.Callback() {
+        TransferEngine.Callback callback = createTransferCallback();
+        String localName = Build.MANUFACTURER + " " + Build.MODEL;
+        if (info.isGroupOwner) {
+            transferEngine.startServer(localSender, localName, outgoingSources, callback);
+        } else {
+            InetAddress ownerAddress = info.groupOwnerAddress;
+            String host = ownerAddress == null ? null : ownerAddress.getHostAddress();
+            transferEngine.startClient(host, localSender, localName, outgoingSources, callback);
+        }
+    }
+
+    private TransferEngine.Callback createTransferCallback() {
+        Context appContext = activity.getApplicationContext();
+        return new TransferEngine.Callback() {
             @Override
-            public void onSuccess(String peerName) {
+            public void onConnected(String peerName) {
                 mainHandler.post(() -> events.onHandshakeCompleted(peerName));
             }
 
             @Override
-            public void onFailure() {
-                mainHandler.post(() -> {
-                    handshakeStarted = false;
-                    events.onWifiDirectError(R.string.handshake_failed);
-                });
+            public void onIncomingOffer(
+                    String peerName,
+                    List<TransferItemInfo> items,
+                    long totalBytes
+            ) {
+                mainHandler.post(() -> events.onIncomingOffer(peerName, items, totalBytes));
+            }
+
+            @Override
+            public void onTransferStarted(boolean sending, int itemCount, long totalBytes) {
+                String title = activity.getString(sending
+                        ? R.string.notification_sending : R.string.notification_receiving);
+                String text = activity.getString(R.string.notification_preparing_items, itemCount);
+                TransferService.start(appContext, title, text, totalBytes <= 0L);
+                mainHandler.post(() -> events.onTransferStarted(sending, itemCount, totalBytes));
+            }
+
+            @Override
+            public void onProgress(
+                    boolean sending,
+                    String itemName,
+                    int itemIndex,
+                    int itemCount,
+                    long transferredBytes,
+                    long totalBytes,
+                    long bytesPerSecond
+            ) {
+                int percent = totalBytes > 0L
+                        ? (int) Math.min(100L, transferredBytes * 100L / totalBytes)
+                        : 0;
+                String title = activity.getString(sending
+                        ? R.string.notification_sending : R.string.notification_receiving);
+                String text = itemName + " • " + FormatUtils.bytes(bytesPerSecond) + "/s";
+                TransferService.update(appContext, title, text, percent, totalBytes <= 0L);
+                mainHandler.post(() -> events.onTransferProgress(
+                        sending,
+                        itemName,
+                        itemIndex,
+                        itemCount,
+                        transferredBytes,
+                        totalBytes,
+                        bytesPerSecond
+                ));
+            }
+
+            @Override
+            public void onItemCompleted(
+                    boolean sending,
+                    String itemName,
+                    int itemIndex,
+                    int itemCount
+            ) {
+                mainHandler.post(() -> events.onTransferItemCompleted(
+                        sending,
+                        itemName,
+                        itemIndex,
+                        itemCount
+                ));
+            }
+
+            @Override
+            public void onCompleted(
+                    boolean sending,
+                    int itemCount,
+                    long transferredBytes,
+                    String saveLocation
+            ) {
+                TransferService.stop(appContext);
+                mainHandler.post(() -> events.onTransferCompleted(
+                        sending,
+                        itemCount,
+                        transferredBytes,
+                        saveLocation
+                ));
+            }
+
+            @Override
+            public void onRejected() {
+                TransferService.stop(appContext);
+                mainHandler.post(events::onTransferRejected);
+            }
+
+            @Override
+            public void onFailure(int messageResId) {
+                transportStarted = false;
+                TransferService.stop(appContext);
+                mainHandler.post(() -> events.onWifiDirectError(messageResId));
             }
         };
-
-        String localName = Build.MANUFACTURER + " " + Build.MODEL;
-        if (info.isGroupOwner) {
-            handshake.startServer(localName, callback);
-        } else {
-            InetAddress ownerAddress = info.groupOwnerAddress;
-            String host = ownerAddress == null ? null : ownerAddress.getHostAddress();
-            handshake.startClient(host, localName, callback);
-        }
     }
 
-    private void stopHandshake() {
-        handshakeStarted = false;
-        handshake.stop();
+    private void stopTransport() {
+        transportStarted = false;
+        transferEngine.cancel();
+        TransferService.stop(activity.getApplicationContext());
     }
 
     private int messageForReason(int reason) {
@@ -298,7 +420,7 @@ final class WifiDirectController {
                 if (networkInfo != null && networkInfo.isConnected()) {
                     manager.requestConnectionInfo(channel, WifiDirectController.this::handleConnectionInfo);
                 } else {
-                    stopHandshake();
+                    stopTransport();
                     events.onDisconnected();
                 }
             }

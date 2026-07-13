@@ -1,6 +1,7 @@
 package com.bassam.qareebshare;
 
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.ClipData;
 import android.content.Intent;
 import android.content.pm.ApplicationInfo;
@@ -18,10 +19,10 @@ import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import java.io.IOException;
 import java.text.Collator;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -53,6 +54,7 @@ public final class MainActivity extends Activity implements WifiDirectEvents {
     private Screen currentScreen = Screen.HOME;
     private PendingNearbyAction pendingNearbyAction = PendingNearbyAction.NONE;
     private WifiDirectController wifiDirectController;
+    private boolean preparingSources;
 
     private TextView selectedFilesView;
     private TextView selectedAppsView;
@@ -61,6 +63,7 @@ public final class MainActivity extends Activity implements WifiDirectEvents {
     private TextView sendStatusView;
     private ProgressBar sendProgressView;
     private ListView peersListView;
+    private View findDevicesButton;
     private TextView receiveStatusView;
     private TextView receivePeerView;
     private ProgressBar receiveProgressView;
@@ -91,7 +94,8 @@ public final class MainActivity extends Activity implements WifiDirectEvents {
         window.setNavigationBarColor(getColor(R.color.background));
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            int nightMode = getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK;
+            int nightMode = getResources().getConfiguration().uiMode
+                    & Configuration.UI_MODE_NIGHT_MASK;
             if (nightMode != Configuration.UI_MODE_NIGHT_YES) {
                 window.getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR);
             }
@@ -118,13 +122,14 @@ public final class MainActivity extends Activity implements WifiDirectEvents {
         sendStatusView = findViewById(R.id.text_send_status);
         sendProgressView = findViewById(R.id.progress_peers);
         peersListView = findViewById(R.id.list_peers);
+        findDevicesButton = findViewById(R.id.button_find_devices);
 
         updateSelectedFilesText();
         updateSelectedAppsText();
 
         findViewById(R.id.card_files).setOnClickListener(v -> openFilePicker());
         findViewById(R.id.card_apps).setOnClickListener(v -> showApps());
-        findViewById(R.id.button_find_devices).setOnClickListener(v -> beginDiscovery());
+        findDevicesButton.setOnClickListener(v -> beginDiscovery());
 
         peersAdapter = new PeersAdapter(this);
         peersAdapter.replace(wifiDirectController.currentPeers());
@@ -250,8 +255,45 @@ public final class MainActivity extends Activity implements WifiDirectEvents {
             Toast.makeText(this, R.string.choose_items_first, Toast.LENGTH_SHORT).show();
             return;
         }
-        pendingNearbyAction = PendingNearbyAction.DISCOVER;
-        runPendingNearbyAction();
+        if (preparingSources) {
+            return;
+        }
+
+        preparingSources = true;
+        setFindButtonEnabled(false);
+        setSendState(R.string.preparing_selected_items, true);
+        ArrayList<Uri> fileSnapshot = new ArrayList<>(selectedFiles);
+        LinkedHashSet<String> appSnapshot = new LinkedHashSet<>(selectedApps);
+
+        backgroundExecutor.execute(() -> {
+            try {
+                List<TransferSource> sources = TransferSourceResolver.resolve(
+                        getApplicationContext(),
+                        fileSnapshot,
+                        appSnapshot
+                );
+                runOnUiThread(() -> {
+                    preparingSources = false;
+                    setFindButtonEnabled(true);
+                    if (isFinishing() || currentScreen != Screen.SEND) {
+                        return;
+                    }
+                    if (sources.isEmpty()) {
+                        showNearbyError(R.string.no_transferable_items);
+                        return;
+                    }
+                    wifiDirectController.setOutgoingSources(sources);
+                    pendingNearbyAction = PendingNearbyAction.DISCOVER;
+                    runPendingNearbyAction();
+                });
+            } catch (IOException | RuntimeException error) {
+                runOnUiThread(() -> {
+                    preparingSources = false;
+                    setFindButtonEnabled(true);
+                    showNearbyError(R.string.selected_items_unavailable);
+                });
+            }
+        });
     }
 
     private void runPendingNearbyAction() {
@@ -259,6 +301,12 @@ public final class MainActivity extends Activity implements WifiDirectEvents {
                 || !wifiDirectController.isAvailable()) {
             showNearbyError(R.string.wifi_direct_not_supported);
             pendingNearbyAction = PendingNearbyAction.NONE;
+            return;
+        }
+
+        if (pendingNearbyAction == PendingNearbyAction.RECEIVE
+                && !StoragePermissionManager.hasReceivePermission(this)) {
+            StoragePermissionManager.requestReceivePermission(this);
             return;
         }
 
@@ -296,10 +344,19 @@ public final class MainActivity extends Activity implements WifiDirectEvents {
     @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode != NearbyPermissionManager.REQUEST_CODE) {
+        if (requestCode == StoragePermissionManager.REQUEST_CODE) {
+            if (StoragePermissionManager.hasReceivePermission(this)) {
+                runPendingNearbyAction();
+            } else {
+                pendingNearbyAction = PendingNearbyAction.NONE;
+                showNearbyError(R.string.storage_permission_required);
+            }
             return;
         }
 
+        if (requestCode != NearbyPermissionManager.REQUEST_CODE) {
+            return;
+        }
         if (NearbyPermissionManager.hasRequiredPermissions(this)) {
             runPendingNearbyAction();
         } else {
@@ -364,7 +421,7 @@ public final class MainActivity extends Activity implements WifiDirectEvents {
                     Intent.FLAG_GRANT_READ_URI_PERMISSION
             );
         } catch (SecurityException ignored) {
-            // Some document providers grant access only for the current session.
+            // Some providers grant access only for the current session.
         }
     }
 
@@ -407,12 +464,19 @@ public final class MainActivity extends Activity implements WifiDirectEvents {
         }
     }
 
+    private void setFindButtonEnabled(boolean enabled) {
+        if (findDevicesButton != null) {
+            findDevicesButton.setEnabled(enabled);
+            findDevicesButton.setAlpha(enabled ? 1.0f : 0.6f);
+        }
+    }
+
     private void setSendState(int messageResId, boolean loading) {
         if (currentScreen != Screen.SEND || sendStatusView == null) {
             return;
         }
         sendStatusView.setText(messageResId);
-        sendProgressView.setVisibility(loading ? View.VISIBLE : View.GONE);
+        configureProgress(sendProgressView, loading, true, 0);
     }
 
     private void setReceiveState(int messageResId, boolean loading) {
@@ -420,7 +484,24 @@ public final class MainActivity extends Activity implements WifiDirectEvents {
             return;
         }
         receiveStatusView.setText(messageResId);
-        receiveProgressView.setVisibility(loading ? View.VISIBLE : View.GONE);
+        configureProgress(receiveProgressView, loading, true, 0);
+    }
+
+    private void configureProgress(
+            ProgressBar progressBar,
+            boolean visible,
+            boolean indeterminate,
+            int progress
+    ) {
+        if (progressBar == null) {
+            return;
+        }
+        progressBar.setVisibility(visible ? View.VISIBLE : View.GONE);
+        progressBar.setIndeterminate(indeterminate);
+        if (!indeterminate) {
+            progressBar.setMax(100);
+            progressBar.setProgress(Math.max(0, Math.min(100, progress)));
+        }
     }
 
     private void showNearbyError(int messageResId) {
@@ -437,6 +518,7 @@ public final class MainActivity extends Activity implements WifiDirectEvents {
         sendStatusView = null;
         sendProgressView = null;
         peersListView = null;
+        findDevicesButton = null;
         receiveStatusView = null;
         receivePeerView = null;
         receiveProgressView = null;
@@ -468,7 +550,7 @@ public final class MainActivity extends Activity implements WifiDirectEvents {
             peersListView.setVisibility(View.GONE);
         } else {
             sendStatusView.setText(getString(R.string.nearby_devices_count, peers.size()));
-            sendProgressView.setVisibility(View.GONE);
+            configureProgress(sendProgressView, false, false, 0);
             peersListView.setVisibility(View.VISIBLE);
         }
     }
@@ -483,9 +565,9 @@ public final class MainActivity extends Activity implements WifiDirectEvents {
 
     @Override
     public void onConnecting(PeerDevice peer) {
-        if (currentScreen == Screen.SEND) {
+        if (currentScreen == Screen.SEND && sendStatusView != null) {
             sendStatusView.setText(getString(R.string.connecting_to_device, peer.name));
-            sendProgressView.setVisibility(View.VISIBLE);
+            configureProgress(sendProgressView, true, true, 0);
         }
     }
 
@@ -498,14 +580,166 @@ public final class MainActivity extends Activity implements WifiDirectEvents {
     @Override
     public void onHandshakeCompleted(String peerName) {
         if (currentScreen == Screen.SEND && sendStatusView != null) {
-            sendStatusView.setText(getString(R.string.connected_to_device, peerName));
-            sendProgressView.setVisibility(View.GONE);
+            sendStatusView.setText(getString(R.string.connected_waiting_acceptance, peerName));
+            configureProgress(sendProgressView, true, true, 0);
         }
         if (currentScreen == Screen.RECEIVE && receiveStatusView != null) {
             receiveStatusView.setText(R.string.device_connected);
-            receiveProgressView.setVisibility(View.GONE);
+            configureProgress(receiveProgressView, true, true, 0);
             receivePeerView.setText(peerName);
         }
+    }
+
+    @Override
+    public void onIncomingOffer(String peerName, List<TransferItemInfo> items, long totalBytes) {
+        if (isFinishing() || isDestroyed()) {
+            wifiDirectController.respondToOffer(false);
+            return;
+        }
+        if (currentScreen != Screen.RECEIVE) {
+            showReceive();
+        }
+        setReceiveState(R.string.waiting_for_receive_approval, false);
+        if (receivePeerView != null) {
+            receivePeerView.setText(peerName);
+        }
+
+        int appParts = 0;
+        for (TransferItemInfo item : items) {
+            if (item.kind == TransferItemInfo.KIND_APP) {
+                appParts++;
+            }
+        }
+        String size = totalBytes >= 0L ? FormatUtils.bytes(totalBytes) : getString(R.string.unknown_size);
+        String message = getString(
+                R.string.receive_offer_message,
+                peerName,
+                items.size(),
+                size,
+                appParts
+        );
+
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.receive_offer_title)
+                .setMessage(message)
+                .setCancelable(false)
+                .setPositiveButton(R.string.accept_receive, (dialog, which) -> {
+                    setReceiveState(R.string.receive_starting, true);
+                    wifiDirectController.respondToOffer(true);
+                })
+                .setNegativeButton(R.string.reject_receive, (dialog, which) -> {
+                    wifiDirectController.respondToOffer(false);
+                    setReceiveState(R.string.receive_rejected, false);
+                })
+                .show();
+    }
+
+    @Override
+    public void onTransferStarted(boolean sending, int itemCount, long totalBytes) {
+        int message = sending ? R.string.sending_started : R.string.receiving_started;
+        if (sending && currentScreen == Screen.SEND) {
+            sendStatusView.setText(getString(message, itemCount));
+            configureProgress(sendProgressView, true, totalBytes <= 0L, 0);
+            if (peersListView != null) {
+                peersListView.setVisibility(View.GONE);
+            }
+        } else if (!sending && currentScreen == Screen.RECEIVE) {
+            receiveStatusView.setText(getString(message, itemCount));
+            configureProgress(receiveProgressView, true, totalBytes <= 0L, 0);
+        }
+    }
+
+    @Override
+    public void onTransferProgress(
+            boolean sending,
+            String itemName,
+            int itemIndex,
+            int itemCount,
+            long transferredBytes,
+            long totalBytes,
+            long bytesPerSecond
+    ) {
+        int percent = totalBytes > 0L
+                ? (int) Math.min(100L, transferredBytes * 100L / totalBytes)
+                : 0;
+        String progressText;
+        if (totalBytes > 0L) {
+            progressText = getString(
+                    R.string.transfer_progress_known,
+                    itemIndex,
+                    itemCount,
+                    itemName,
+                    FormatUtils.bytes(transferredBytes),
+                    FormatUtils.bytes(totalBytes),
+                    FormatUtils.bytes(bytesPerSecond)
+            );
+        } else {
+            progressText = getString(
+                    R.string.transfer_progress_unknown,
+                    itemIndex,
+                    itemCount,
+                    itemName,
+                    FormatUtils.bytes(transferredBytes),
+                    FormatUtils.bytes(bytesPerSecond)
+            );
+        }
+
+        if (sending && currentScreen == Screen.SEND && sendStatusView != null) {
+            sendStatusView.setText(progressText);
+            configureProgress(sendProgressView, true, totalBytes <= 0L, percent);
+        } else if (!sending && currentScreen == Screen.RECEIVE && receiveStatusView != null) {
+            receiveStatusView.setText(progressText);
+            configureProgress(receiveProgressView, true, totalBytes <= 0L, percent);
+        }
+    }
+
+    @Override
+    public void onTransferItemCompleted(
+            boolean sending,
+            String itemName,
+            int itemIndex,
+            int itemCount
+    ) {
+        String text = getString(R.string.transfer_item_verified, itemIndex, itemCount, itemName);
+        if (sending && currentScreen == Screen.SEND && sendStatusView != null) {
+            sendStatusView.setText(text);
+        } else if (!sending && currentScreen == Screen.RECEIVE && receiveStatusView != null) {
+            receiveStatusView.setText(text);
+        }
+    }
+
+    @Override
+    public void onTransferCompleted(
+            boolean sending,
+            int itemCount,
+            long transferredBytes,
+            String saveLocation
+    ) {
+        if (sending && currentScreen == Screen.SEND && sendStatusView != null) {
+            sendStatusView.setText(getString(
+                    R.string.send_completed,
+                    itemCount,
+                    FormatUtils.bytes(transferredBytes)
+            ));
+            configureProgress(sendProgressView, true, false, 100);
+        } else if (!sending && currentScreen == Screen.RECEIVE && receiveStatusView != null) {
+            receiveStatusView.setText(getString(
+                    R.string.receive_completed,
+                    itemCount,
+                    FormatUtils.bytes(transferredBytes)
+            ));
+            configureProgress(receiveProgressView, true, false, 100);
+            if (receivePeerView != null && saveLocation != null && !saveLocation.isEmpty()) {
+                receivePeerView.setText(getString(R.string.saved_in_location, saveLocation));
+            }
+        }
+        Toast.makeText(this, R.string.transfer_completed_toast, Toast.LENGTH_LONG).show();
+    }
+
+    @Override
+    public void onTransferRejected() {
+        setSendState(R.string.transfer_rejected, false);
+        setReceiveState(R.string.receive_rejected, false);
     }
 
     @Override

@@ -21,14 +21,16 @@ for path in "${required[@]}"; do
   fi
 done
 
-if grep -R --line-number --include='build.gradle' -E 'implementation|api|runtimeOnly' . | grep -v verifyNoRuntimeDependencies; then
+if grep -R --line-number --include='build.gradle' -E '^[[:space:]]*(implementation|api|runtimeOnly|debugImplementation|releaseImplementation)[[:space:]]' .; then
   echo "External runtime dependency declaration found." >&2
   exit 1
 fi
 
+VERSION="$(sed -n "s/.*versionName = '\([^']*\)'.*/\1/p" app/build.gradle | head -1)"
 echo "========================================"
-echo "QAREEB SHARE BATCH 1 CHECK: OK"
+echo "QAREEB SHARE PROJECT CHECK: OK"
 echo "Project: $ROOT"
+echo "Version: ${VERSION:-unknown}"
 echo "Runtime libraries: none"
 echo "minSdk: 23 | targetSdk: 37"
 echo "========================================"
