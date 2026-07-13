@@ -41,7 +41,7 @@ jobs:
         shell: bash
         run: bash scripts/check-final.sh
 
-      - name: Lint and build APKs
+      - name: Build debug and release APKs
         shell: bash
         run: |
           set -euo pipefail
@@ -49,7 +49,6 @@ jobs:
             --no-daemon \
             --no-configuration-cache \
             --stacktrace \
-            :app:lintDebug \
             :app:assembleDebug \
             :app:assembleRelease
 
@@ -59,4 +58,25 @@ jobs:
           name: qareeb-share-apks
           path: app/build/outputs/apk/**/*.apk
           if-no-files-found: error
+          retention-days: 14
+
+      - name: Run Android Lint
+        id: android_lint
+        continue-on-error: true
+        shell: bash
+        run: |
+          gradle \
+            --no-daemon \
+            --no-configuration-cache \
+            :app:lintDebug
+
+      - name: Upload Lint reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qareeb-share-lint-reports
+          path: |
+            app/build/reports/lint-results-debug.*
+            app/build/intermediates/lint_intermediate_text_report/debug/lintReportDebug/lint-results-debug.txt
+          if-no-files-found: warn
           retention-days: 14

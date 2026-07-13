@@ -1,5 +1,7 @@
 package com.bassam.qareebshare;
 
+import android.annotation.SuppressLint;
+
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.ClipData;
@@ -14,6 +16,7 @@ import android.os.Bundle;
 import android.provider.Settings;
 import android.view.View;
 import android.view.Window;
+import android.window.OnBackInvokedDispatcher;
 import android.widget.ImageButton;
 import android.widget.ListView;
 import android.widget.ProgressBar;
@@ -74,6 +77,7 @@ public final class MainActivity extends Activity implements WifiDirectEvents {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        registerSystemBackHandler();
         configureSystemBars();
         wifiDirectController = new WifiDirectController(this, this);
         historyStore = new TransferHistoryStore(getApplicationContext());
@@ -99,6 +103,31 @@ public final class MainActivity extends Activity implements WifiDirectEvents {
     protected void onStop() {
         wifiDirectController.unregister();
         super.onStop();
+    }
+
+    private void registerSystemBackHandler() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            Api33BackHandler.register(this);
+        }
+    }
+
+    private void handleSystemBack() {
+        if (currentScreen == Screen.HOME) {
+            finish();
+        } else {
+            navigateBack();
+        }
+    }
+
+    private static final class Api33BackHandler {
+        @android.annotation.TargetApi(Build.VERSION_CODES.TIRAMISU)
+        private static void register(MainActivity activity) {
+            activity.getOnBackInvokedDispatcher()
+                    .registerOnBackInvokedCallback(
+                            OnBackInvokedDispatcher.PRIORITY_DEFAULT,
+                            activity::handleSystemBack
+                    );
+        }
     }
 
     private void configureSystemBars() {
@@ -961,13 +990,10 @@ public final class MainActivity extends Activity implements WifiDirectEvents {
         }
     }
 
+    @SuppressLint("GestureBackNavigation")
     @Override
     public void onBackPressed() {
-        if (currentScreen == Screen.HOME) {
-            super.onBackPressed();
-        } else {
-            navigateBack();
-        }
+        handleSystemBack();
     }
 
     @Override
