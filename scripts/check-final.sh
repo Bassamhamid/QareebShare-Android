@@ -89,8 +89,8 @@ if missing_colors:
 
 workflow = (root / '.github/workflows/android.yml').read_text(encoding='utf-8')
 required_actions = {
-    'actions/checkout@v7',
-    'actions/setup-java@v6',
+    'actions/checkout@v6',
+    'actions/setup-java@v5',
     'android-actions/setup-android@v4',
     'gradle/actions/setup-gradle@v6',
     'actions/upload-artifact@v6',
