@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="session_header_subtitle">مشاركة مباشرة دون إنترنت أو راوتر</string>
+    <string name="session_theme_button">المظهر</string>
+    <string name="session_theme_title">اختر المظهر</string>
+    <string-array name="session_theme_choices">
+        <item>حسب الهاتف</item>
+        <item>فاتح</item>
+        <item>داكن</item>
+    </string-array>
+    <string name="session_cancel">إلغاء</string>
+
+    <string name="session_ready_title">جاهز للاتصال</string>
+    <string name="session_ready_body">افتح قريب شير في الهاتف الآخر، ثم ابدأ البحث.</string>
+    <string name="session_find_devices">العثور على هاتف قريب</string>
+
+    <string name="session_wifi_off_title">Wi‑Fi متوقف</string>
+    <string name="session_wifi_off_body">شغّل Wi‑Fi في الهاتفين لإنشاء اتصال مباشر بينهما.</string>
+    <string name="session_turn_on_wifi">تشغيل Wi‑Fi</string>
+
+    <string name="session_preparing_title">جارٍ الاستعداد</string>
+    <string name="session_preparing_body">يتم تجهيز الهاتف للعثور على الأجهزة القريبة.</string>
+    <string name="session_searching_title">جارٍ البحث</string>
+    <string name="session_searching_body">أبقِ قريب شير مفتوحاً في الهاتف الآخر.</string>
+    <string name="session_stop_search">إيقاف البحث</string>
+    <string name="session_cancel_action">إلغاء</string>
+
+    <string name="session_nearby_devices_title">الأجهزة القريبة</string>
+    <string name="session_no_devices_yet">لم يظهر أي هاتف بعد. قرّب الهاتفين وانتظر قليلاً.</string>
+    <string name="session_tap_to_connect">اضغط للاتصال</string>
+    <string name="session_device_symbol">↔</string>
+    <string name="session_chevron">‹</string>
+    <string name="session_device_unavailable">هذا الهاتف غير متاح الآن</string>
+    <string name="session_nearby_phone">هاتف قريب</string>
+
+    <string name="session_connecting_title">جارٍ الاتصال</string>
+    <string name="session_connecting_body">يتم الاتصال بـ %1$s. قد يظهر طلب موافقة في الهاتف الآخر.</string>
+    <string name="session_finishing_connection_title">يتم تجهيز الجلسة</string>
+    <string name="session_finishing_connection_body">انتظر لحظات حتى يصبح الهاتفان جاهزين.</string>
+    <string name="session_connected_title">تم الاتصال بنجاح</string>
+    <string name="session_connected_body">الجلسة نشطة، وسيبقى الهاتفان متصلين حتى تنهيها.</string>
+    <string name="session_connected_with">متصل الآن بـ</string>
+    <string name="session_active_body">أبقِ التطبيق مفتوحاً أثناء الجلسة.</string>
+    <string name="session_disconnect">إنهاء الجلسة</string>
+    <string name="session_disconnecting_title">جارٍ إنهاء الجلسة</string>
+    <string name="session_disconnecting_body">يتم قطع الاتصال بأمان.</string>
+
+    <string name="session_not_supported">هذا الهاتف لا يدعم الاتصال المباشر</string>
+    <string name="session_try_again">تعذر بدء الاتصال الآن</string>
+    <string name="session_connection_failed">تعذر الاتصال بهذا الهاتف</string>
+    <string name="session_connection_timed_out">استغرق الاتصال وقتاً طويلاً</string>
+    <string name="session_connection_lost">انقطع الاتصال بين الهاتفين</string>
+    <string name="session_retry_body">قرّب الهاتفين، وتأكد من تشغيل Wi‑Fi، ثم حاول مجدداً.</string>
+    <string name="session_try_again_button">المحاولة مجدداً</string>
+
+    <string name="session_permission_title">يلزم السماح بالعثور على الأجهزة القريبة</string>
+    <string name="session_permission_body">اسمح للتطبيق بالوصول إلى الأجهزة القريبة حتى يظهر الهاتف الآخر.</string>
+    <string name="session_location_title">يلزم تشغيل الموقع</string>
+    <string name="session_location_body">في هذا الإصدار من أندرويد، يجب تشغيل الموقع أثناء البحث عن هاتف قريب.</string>
+    <string name="session_open_location">تشغيل الموقع</string>
+
+    <string name="session_privacy_note">تبقى الملفات بين الهاتفين ولا تُرفع إلى أي خادم.</string>
+</resources>

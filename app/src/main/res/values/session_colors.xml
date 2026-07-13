@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="session_background">#F6F7FB</color>
+    <color name="session_surface">#FFFFFFFF</color>
+    <color name="session_surface_variant">#F0F3F8</color>
+    <color name="session_text">#101828</color>
+    <color name="session_muted">#667085</color>
+    <color name="session_border">#D8DEE8</color>
+    <color name="session_primary">#246BFD</color>
+    <color name="session_primary_disabled">#9FBAF8</color>
+    <color name="session_primary_soft">#E8F0FF</color>
+    <color name="session_success">#067647</color>
+    <color name="session_success_soft">#ECFDF3</color>
+    <color name="session_success_border">#ABEFC6</color>
+    <color name="session_danger">#B42318</color>
+</resources>
