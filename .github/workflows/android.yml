@@ -1,6 +1,5 @@
 name: Android Build
 
-# Builds are intentionally manual while development batches are still being applied.
 on:
   workflow_dispatch:
 
@@ -22,13 +21,13 @@ jobs:
           java-version: '17'
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
 
       - name: Install Android 17 SDK
         shell: bash
         run: |
-          yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager "platform-tools" "platforms;android-37" "build-tools;36.0.0"
+          set -euo pipefail
+          sdkmanager "platform-tools" "platforms;android-37.0" "build-tools;37.0.0"
 
       - name: Set up Gradle 9.4.1
         uses: gradle/actions/setup-gradle@v4
