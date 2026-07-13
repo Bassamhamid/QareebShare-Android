@@ -59,12 +59,83 @@
         </LinearLayout>
 
         <LinearLayout
+            android:id="@+id/panel_role_choices"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="24dp"
             android:background="@drawable/bg_session_card"
             android:orientation="vertical"
             android:padding="20dp">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/session_choice_title"
+                android:textColor="@color/session_text"
+                android:textSize="21sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:lineSpacingExtra="3dp"
+                android:text="@string/session_choice_body"
+                android:textColor="@color/session_muted"
+                android:textSize="15sp" />
+
+            <Button
+                android:id="@+id/button_create_session"
+                android:layout_width="match_parent"
+                android:layout_height="56dp"
+                android:layout_marginTop="22dp"
+                android:background="@drawable/bg_session_primary"
+                android:text="@string/session_create_button"
+                android:textAllCaps="false"
+                android:textColor="@android:color/white"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="7dp"
+                android:gravity="center"
+                android:text="@string/session_create_hint"
+                android:textColor="@color/session_muted"
+                android:textSize="13sp" />
+
+            <Button
+                android:id="@+id/button_join_session"
+                android:layout_width="match_parent"
+                android:layout_height="56dp"
+                android:layout_marginTop="18dp"
+                android:background="@drawable/bg_session_outline"
+                android:text="@string/session_join_button"
+                android:textAllCaps="false"
+                android:textColor="@color/session_primary"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="7dp"
+                android:gravity="center"
+                android:text="@string/session_join_hint"
+                android:textColor="@color/session_muted"
+                android:textSize="13sp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/panel_status"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:background="@drawable/bg_session_card"
+            android:orientation="vertical"
+            android:padding="20dp"
+            android:visibility="gone">
 
             <TextView
                 android:id="@+id/text_status_title"
@@ -102,7 +173,8 @@
                 android:textAllCaps="false"
                 android:textColor="@android:color/white"
                 android:textSize="16sp"
-                android:textStyle="bold" />
+                android:textStyle="bold"
+                android:visibility="gone" />
         </LinearLayout>
 
         <LinearLayout
@@ -118,7 +190,7 @@
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="@string/session_nearby_devices_title"
+                android:text="@string/session_available_sessions_title"
                 android:textColor="@color/session_text"
                 android:textSize="17sp"
                 android:textStyle="bold" />
@@ -130,7 +202,7 @@
                 android:layout_marginTop="18dp"
                 android:gravity="center"
                 android:padding="18dp"
-                android:text="@string/session_no_devices_yet"
+                android:text="@string/session_no_sessions_yet"
                 android:textColor="@color/session_muted"
                 android:textSize="14sp" />
 
@@ -149,7 +221,7 @@
             android:id="@+id/panel_connected"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="18dp"
+            android:layout_marginTop="24dp"
             android:background="@drawable/bg_session_connected"
             android:orientation="vertical"
             android:padding="20dp"
@@ -158,24 +230,24 @@
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="@string/session_connected_with"
+                android:text="@string/session_connected_title"
                 android:textColor="@color/session_success"
-                android:textSize="14sp"
+                android:textSize="15sp"
                 android:textStyle="bold" />
 
             <TextView
                 android:id="@+id/text_connected_name"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="6dp"
+                android:layout_marginTop="7dp"
                 android:textColor="@color/session_text"
-                android:textSize="22sp"
+                android:textSize="23sp"
                 android:textStyle="bold" />
 
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
+                android:layout_marginTop="9dp"
                 android:text="@string/session_active_body"
                 android:textColor="@color/session_muted"
                 android:textSize="15sp" />

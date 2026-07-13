@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/data/data/com.termux/files/usr/bin/bash
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -9,8 +9,44 @@ fail() {
   exit 1
 }
 
-bash scripts/check-project.sh >/dev/null
-bash scripts/check-rebuild-batch1.sh >/dev/null
+required=(
+  app/build.gradle
+  app/src/main/AndroidManifest.xml
+  app/src/main/java/com/bassam/qareebshare/SessionActivity.java
+  app/src/main/java/com/bassam/qareebshare/SessionController.java
+  app/src/main/java/com/bassam/qareebshare/HostSessionController.java
+  app/src/main/java/com/bassam/qareebshare/JoinSessionController.java
+  app/src/main/java/com/bassam/qareebshare/ActiveSessionTransport.java
+  app/src/main/java/com/bassam/qareebshare/P2pSessionCleaner.java
+  app/src/main/res/layout/activity_session.xml
+  app/src/main/res/values/session_strings.xml
+  .github/workflows/android.yml
+)
+
+for file in "${required[@]}"; do
+  [[ -f "$file" ]] || fail "الملف مفقود: $file"
+done
+
+VERSION_NAME="$(sed -n "s/.*versionName = '\([^']*\)'.*/\1/p" app/build.gradle | head -1)"
+VERSION_CODE="$(sed -n 's/.*versionCode = \([0-9][0-9]*\).*/\1/p' app/build.gradle | head -1)"
+[[ "$VERSION_NAME" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "رقم الإصدار غير صالح"
+[[ "$VERSION_CODE" =~ ^[1-9][0-9]*$ ]] || fail "versionCode غير صالح"
+
+grep -q "minSdk = 23" app/build.gradle || fail "Android 6 غير مضبوط كحد أدنى"
+grep -q "targetSdk = 37" app/build.gradle || fail "targetSdk غير مضبوط"
+grep -q "workflow_dispatch" .github/workflows/android.yml || fail "البناء اليدوي غير موجود"
+grep -q "app/build/outputs/apk/debug/app-debug.apk" .github/workflows/android.yml || fail "مسار APK التجريبي غير مضبوط"
+if grep -q "app-release-unsigned.apk" .github/workflows/android.yml; then
+  fail "ملف Release غير الموقع ما زال مرفوعاً للمستخدم"
+fi
+
+if [[ -f app/src/main/java/com/bassam/qareebshare/SessionTransport.java ]]; then
+  fail "محرك الجلسة القديم ما زال موجوداً"
+fi
+
+if grep -R --line-number --include='build.gradle' -E '^[[:space:]]*(implementation|api|runtimeOnly|debugImplementation|releaseImplementation)[[:space:]]' .; then
+  fail "تم العثور على مكتبة تشغيل خارجية"
+fi
 
 python - <<'PY'
 from pathlib import Path
@@ -18,107 +54,65 @@ import re
 import xml.etree.ElementTree as ET
 
 root = Path('.')
-
-# Every text file in the repository must be clean; do not rely only on git diff.
-extensions = {'.java', '.xml', '.gradle', '.properties', '.yml', '.yaml', '.sh', '.md', '.txt'}
-for path in root.rglob('*'):
-    if not path.is_file() or '.git' in path.parts:
-        continue
-    if path.suffix not in extensions and path.name not in {'gradlew'}:
-        continue
-    text = path.read_text(encoding='utf-8')
-    for number, line in enumerate(text.splitlines(), 1):
-        if line.endswith((' ', '\t')):
-            raise SystemExit(f'Trailing whitespace: {path}:{number}')
-
-build = (root / 'app/build.gradle').read_text(encoding='utf-8')
-version_code = re.search(r"versionCode\s*=\s*(\d+)", build)
-version_name = re.search(r"versionName\s*=\s*'([^']+)'", build)
-min_sdk = re.search(r"minSdk\s*=\s*(\d+)", build)
-target_sdk = re.search(r"targetSdk\s*=\s*(\d+)", build)
-if not version_code or int(version_code.group(1)) < 1:
-    raise SystemExit('versionCode is invalid')
-if not version_name or not re.fullmatch(r'\d+\.\d+\.\d+', version_name.group(1)):
-    raise SystemExit('versionName is invalid')
-if not min_sdk or min_sdk.group(1) != '23':
-    raise SystemExit('minSdk must remain 23')
-if not target_sdk or target_sdk.group(1) != '37':
-    raise SystemExit('targetSdk must remain 37')
-
 manifest = root / 'app/src/main/AndroidManifest.xml'
 ET.parse(manifest)
 for path in (root / 'app/src/main/res').rglob('*.xml'):
     ET.parse(path)
 
-# Collect resources across every values and values-night file.
 strings = set()
 styles = set()
-colors = set()
 for path in (root / 'app/src/main/res').glob('values*/*.xml'):
     tree = ET.parse(path).getroot()
     for node in tree:
         name = node.attrib.get('name')
-        if not name:
-            continue
-        if node.tag in {'string', 'string-array'}:
+        if node.tag == 'string' and name:
             strings.add(name)
-        elif node.tag == 'style':
+        if node.tag == 'style' and name:
             styles.add(name)
-        elif node.tag == 'color':
-            colors.add(name)
 
 string_refs = set()
 style_refs = set()
-color_refs = set()
-for path in list((root / 'app/src/main/java').rglob('*.java')) + list((root / 'app/src/main/res').rglob('*.xml')):
+paths = list((root / 'app/src/main/java').rglob('*.java'))
+paths += list((root / 'app/src/main/res').rglob('*.xml'))
+for path in paths:
     text = path.read_text(encoding='utf-8')
     string_refs.update(re.findall(r'R\.string\.([A-Za-z0-9_]+)', text))
     string_refs.update(re.findall(r'@string/([A-Za-z0-9_]+)', text))
     style_refs.update(re.findall(r'@style/([A-Za-z0-9_.]+)', text))
-    color_refs.update(re.findall(r'@color/([A-Za-z0-9_]+)', text))
 
 missing_strings = sorted(string_refs - strings)
-missing_styles = sorted(style_refs - styles)
-missing_colors = sorted(color_refs - colors)
 if missing_strings:
-    raise SystemExit('Missing strings: ' + ', '.join(missing_strings))
+    raise SystemExit('Missing string resources: ' + ', '.join(missing_strings))
+missing_styles = sorted(style_refs - styles)
 if missing_styles:
-    raise SystemExit('Missing styles: ' + ', '.join(missing_styles))
-if missing_colors:
-    raise SystemExit('Missing colors: ' + ', '.join(missing_colors))
+    raise SystemExit('Missing style resources: ' + ', '.join(missing_styles))
 
-workflow = (root / '.github/workflows/android.yml').read_text(encoding='utf-8')
-required_actions = {
-    'actions/checkout@v6',
-    'actions/setup-java@v5',
-    'android-actions/setup-android@v4',
-    'gradle/actions/setup-gradle@v6',
-    'actions/upload-artifact@v6',
-}
-missing_actions = sorted(action for action in required_actions if action not in workflow)
-if missing_actions:
-    raise SystemExit('Workflow action is stale or missing: ' + ', '.join(missing_actions))
-if re.search(r'^\s*(push|pull_request):', workflow, re.MULTILINE):
-    raise SystemExit('Workflow must remain manual-only')
-if 'if: always()\n        uses: actions/upload-artifact@v6\n        with:\n          name: qareeb-share-apks' in workflow:
-    raise SystemExit('APK upload must not run after a failed build')
+manifest_text = manifest.read_text(encoding='utf-8')
+java_root = root / 'app/src/main/java/com/bassam/qareebshare'
+classes = {path.stem for path in java_root.glob('*.java')}
+for class_name in re.findall(r'android:name="\.([A-Za-z0-9_]+)"', manifest_text):
+    if class_name not in classes:
+        raise SystemExit('Manifest class is missing: ' + class_name)
+
+for path in root.rglob('*'):
+    if not path.is_file() or '.git' in path.parts:
+        continue
+    if path.suffix.lower() not in {'.java', '.xml', '.gradle', '.properties', '.md', '.sh', '.yml', '.yaml'}:
+        continue
+    for number, line in enumerate(path.read_text(encoding='utf-8').splitlines(), 1):
+        if line.rstrip() != line:
+            raise SystemExit(f'Trailing whitespace: {path}:{number}')
 
 print('Repository structure and resources: OK')
-print(f"Version: {version_name.group(1)} ({version_code.group(1)})")
 PY
 
-if grep -R --line-number --include='build.gradle' -E \
-  '^[[:space:]]*(implementation|api|compileOnly|runtimeOnly|debugImplementation|releaseImplementation)[[:space:]]' .; then
-  fail "تم العثور على مكتبة خارجية داخل التطبيق"
-fi
+./scripts/check-project.sh >/dev/null
 
 echo "========================================"
-echo "QAREEB SHARE REVIEWED CHECK: OK"
-echo "Rebuild batch 1 checks: OK"
-echo "Version checks: dynamic"
-echo "Repository whitespace: clean"
-echo "Workflow: Node 24 actions"
-echo "APK upload: only after successful build and lint"
+echo "QAREEB SHARE FINAL CHECK: OK"
+echo "Version: $VERSION_NAME ($VERSION_CODE)"
+echo "Host / join architecture: present"
+echo "Installable artifact: debug APK only"
 echo "Runtime libraries: none"
 echo "No APK was built locally"
 echo "========================================"

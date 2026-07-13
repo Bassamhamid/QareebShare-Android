@@ -13,7 +13,9 @@ required=(
   app/src/main/AndroidManifest.xml
   app/src/main/java/com/bassam/qareebshare/SessionActivity.java
   app/src/main/java/com/bassam/qareebshare/SessionController.java
-  app/src/main/java/com/bassam/qareebshare/SessionTransport.java
+  app/src/main/java/com/bassam/qareebshare/HostSessionController.java
+  app/src/main/java/com/bassam/qareebshare/JoinSessionController.java
+  app/src/main/java/com/bassam/qareebshare/ActiveSessionTransport.java
   app/src/main/res/layout/activity_session.xml
   .github/workflows/android.yml
 )

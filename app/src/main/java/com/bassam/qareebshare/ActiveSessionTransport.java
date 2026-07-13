@@ -18,20 +18,21 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-final class SessionTransport {
+/** Keeps one bidirectional channel alive for the entire active session. */
+final class ActiveSessionTransport {
     interface Callback {
         void onConnected(String peerName);
         void onClosed(boolean unexpected);
     }
 
     private static final int MAGIC = 0x51534853; // QSHS
-    private static final int VERSION = 1;
+    private static final int VERSION = 2;
     private static final int TYPE_PING = 1;
     private static final int TYPE_PONG = 2;
     private static final int TYPE_BYE = 3;
-    private static final int PORT = 8991;
+    static final int PORT = 8991;
     private static final long HEARTBEAT_INTERVAL_MS = 5_000L;
-    private static final long HEARTBEAT_TIMEOUT_MS = 20_000L;
+    private static final long HEARTBEAT_TIMEOUT_MS = 22_000L;
 
     private final ExecutorService ioExecutor = Executors.newCachedThreadPool();
     private final ScheduledExecutorService heartbeatExecutor =
@@ -50,8 +51,8 @@ final class SessionTransport {
     private volatile boolean connected;
     private volatile boolean userClosed;
 
-    SessionTransport(String localName, Callback callback) {
-        this.localName = localName == null ? "هاتف قريب" : localName;
+    ActiveSessionTransport(String localName, Callback callback) {
+        this.localName = normalizeName(localName);
         this.callback = callback;
     }
 
@@ -61,11 +62,17 @@ final class SessionTransport {
                 ServerSocket server = new ServerSocket();
                 server.setReuseAddress(true);
                 server.bind(new InetSocketAddress(PORT));
-                server.setSoTimeout(35_000);
+                server.setSoTimeout(1_000);
                 serverSocket = server;
-                establish(server.accept());
-            } catch (SocketTimeoutException error) {
-                closeInternal(true);
+                while (!closed.get()) {
+                    try {
+                        Socket accepted = server.accept();
+                        establish(accepted);
+                        return;
+                    } catch (SocketTimeoutException ignored) {
+                        // Wake periodically so cancellation is immediate.
+                    }
+                }
             } catch (IOException error) {
                 closeInternal(true);
             }
@@ -78,7 +85,7 @@ final class SessionTransport {
                 closeInternal(true);
                 return;
             }
-            long deadline = SystemClock.elapsedRealtime() + 25_000L;
+            long deadline = SystemClock.elapsedRealtime() + 35_000L;
             while (!closed.get() && SystemClock.elapsedRealtime() < deadline) {
                 Socket candidate = new Socket();
                 try {
@@ -87,7 +94,7 @@ final class SessionTransport {
                     return;
                 } catch (IOException error) {
                     closeQuietly(candidate);
-                    SystemClock.sleep(450L);
+                    SystemClock.sleep(500L);
                 }
             }
             closeInternal(true);
@@ -136,8 +143,8 @@ final class SessionTransport {
         connectedSocket.setSoTimeout(0);
         connected = true;
         lastReadAt = SystemClock.elapsedRealtime();
-        callback.onConnected(normalizeName(peerName));
         startHeartbeat();
+        callback.onConnected(normalizeName(peerName));
         readLoop();
     }
 

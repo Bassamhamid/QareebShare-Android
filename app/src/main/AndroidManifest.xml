@@ -46,7 +46,8 @@
             android:name=".SessionActivity"
             android:exported="true"
             android:launchMode="singleTop"
-            android:screenOrientation="unspecified">
+            android:screenOrientation="unspecified"
+            android:configChanges="orientation|screenSize|keyboardHidden|uiMode">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

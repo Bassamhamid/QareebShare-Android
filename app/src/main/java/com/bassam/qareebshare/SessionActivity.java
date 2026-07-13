@@ -29,9 +29,21 @@ public final class SessionActivity extends Activity implements SessionController
     private static final String ACCESS_LOCAL_NETWORK =
             "android.permission.ACCESS_LOCAL_NETWORK";
 
+    private enum PendingAction {
+        NONE,
+        HOST,
+        JOIN
+    }
+
     private SessionController controller;
     private SessionPeerAdapter peerAdapter;
+    private SessionController.State renderedState = SessionController.State.IDLE;
+    private PendingAction pendingAction = PendingAction.NONE;
 
+    private View rolePanel;
+    private Button createButton;
+    private Button joinButton;
+    private View statusPanel;
     private TextView statusTitle;
     private TextView statusBody;
     private ProgressBar progress;
@@ -59,10 +71,15 @@ public final class SessionActivity extends Activity implements SessionController
         peerAdapter = new SessionPeerAdapter(this);
         devicesList.setAdapter(peerAdapter);
         devicesList.setOnItemClickListener((parent, view, position, id) -> {
+            if (controller.getState() != SessionController.State.JOIN_SEARCHING) {
+                return;
+            }
             PeerDevice peer = peerAdapter.getItem(position);
-            controller.connect(peer);
+            controller.join(peer);
         });
 
+        createButton.setOnClickListener(v -> begin(PendingAction.HOST));
+        joinButton.setOnClickListener(v -> begin(PendingAction.JOIN));
         primaryButton.setOnClickListener(v -> onPrimaryAction());
         disconnectButton.setOnClickListener(v -> controller.disconnect());
         findViewById(R.id.button_theme).setOnClickListener(v -> showThemeChooser());
@@ -112,15 +129,10 @@ public final class SessionActivity extends Activity implements SessionController
     }
 
     private void handleBackAction() {
-        SessionController.State state = controller == null
-                ? SessionController.State.IDLE
-                : controller.getState();
-        if (state == SessionController.State.CONNECTED
-                || state == SessionController.State.CONNECTING
-                || state == SessionController.State.HANDSHAKING
-                || state == SessionController.State.DISCOVERING
-                || state == SessionController.State.PREPARING) {
+        if (controller != null && controller.getState() != SessionController.State.IDLE
+                && controller.getState() != SessionController.State.NEEDS_WIFI) {
             controller.cancelCurrentAction();
+            pendingAction = PendingAction.NONE;
             return;
         }
         finish();
@@ -133,6 +145,10 @@ public final class SessionActivity extends Activity implements SessionController
     }
 
     private void bindViews() {
+        rolePanel = findViewById(R.id.panel_role_choices);
+        createButton = findViewById(R.id.button_create_session);
+        joinButton = findViewById(R.id.button_join_session);
+        statusPanel = findViewById(R.id.panel_status);
         statusTitle = findViewById(R.id.text_status_title);
         statusBody = findViewById(R.id.text_status_body);
         progress = findViewById(R.id.progress_session);
@@ -145,27 +161,40 @@ public final class SessionActivity extends Activity implements SessionController
         disconnectButton = findViewById(R.id.button_disconnect);
     }
 
+    private void begin(PendingAction action) {
+        pendingAction = action;
+        continuePreparation();
+    }
+
     private void onPrimaryAction() {
         SessionController.State state = controller.getState();
         if (state == SessionController.State.NEEDS_WIFI) {
             openWifiPanel();
             return;
         }
-        if (state == SessionController.State.DISCOVERING
-                || state == SessionController.State.PREPARING
-                || state == SessionController.State.CONNECTING
+        if (state == SessionController.State.ERROR) {
+            if (pendingAction == PendingAction.NONE) {
+                renderState(SessionController.State.IDLE, "");
+            } else {
+                continuePreparation();
+            }
+            return;
+        }
+        if (state == SessionController.State.HOST_PREPARING
+                || state == SessionController.State.HOST_WAITING
+                || state == SessionController.State.JOIN_PREPARING
+                || state == SessionController.State.JOIN_SEARCHING
+                || state == SessionController.State.JOIN_CONNECTING
                 || state == SessionController.State.HANDSHAKING) {
+            pendingAction = PendingAction.NONE;
             controller.cancelCurrentAction();
-            return;
         }
-        if (state == SessionController.State.CONNECTED) {
-            controller.disconnect();
-            return;
-        }
-        continuePreparation();
     }
 
     private void continuePreparation() {
+        if (pendingAction == PendingAction.NONE) {
+            return;
+        }
         if (!controller.isWifiEnabled()) {
             renderState(SessionController.State.NEEDS_WIFI, "");
             return;
@@ -179,7 +208,11 @@ public final class SessionActivity extends Activity implements SessionController
             showLocationRequired();
             return;
         }
-        controller.startSearch();
+        if (pendingAction == PendingAction.HOST) {
+            controller.createSession();
+        } else if (pendingAction == PendingAction.JOIN) {
+            controller.findSessions();
+        }
     }
 
     private boolean hasNearbyPermissions() {
@@ -242,9 +275,12 @@ public final class SessionActivity extends Activity implements SessionController
     }
 
     private void showLocationRequired() {
+        statusPanel.setVisibility(View.VISIBLE);
+        rolePanel.setVisibility(View.GONE);
         statusTitle.setText(R.string.session_location_title);
         statusBody.setText(R.string.session_location_body);
         progress.setVisibility(View.GONE);
+        primaryButton.setVisibility(View.VISIBLE);
         primaryButton.setText(R.string.session_open_location);
         primaryButton.setOnClickListener(v -> {
             continueAfterSettings = true;
@@ -267,7 +303,7 @@ public final class SessionActivity extends Activity implements SessionController
         if (requestCode != REQUEST_NEARBY) {
             return;
         }
-        boolean granted = true;
+        boolean granted = grantResults.length > 0;
         for (int result : grantResults) {
             if (result != PackageManager.PERMISSION_GRANTED) {
                 granted = false;
@@ -279,9 +315,14 @@ public final class SessionActivity extends Activity implements SessionController
             continuePreparation();
         } else {
             continueAfterPermission = false;
+            rolePanel.setVisibility(View.GONE);
+            statusPanel.setVisibility(View.VISIBLE);
             statusTitle.setText(R.string.session_permission_title);
             statusBody.setText(R.string.session_permission_body);
+            progress.setVisibility(View.GONE);
+            primaryButton.setVisibility(View.VISIBLE);
             primaryButton.setText(R.string.session_try_again_button);
+            primaryButton.setOnClickListener(v -> continuePreparation());
         }
     }
 
@@ -322,8 +363,9 @@ public final class SessionActivity extends Activity implements SessionController
     @Override
     public void onPeersChanged(List<PeerDevice> peers) {
         runOnUiThread(() -> {
-            peerAdapter.replace(peers == null ? Collections.emptyList() : peers);
-            boolean empty = peers == null || peers.isEmpty();
+            List<PeerDevice> safe = peers == null ? Collections.emptyList() : peers;
+            peerAdapter.replace(safe);
+            boolean empty = safe.isEmpty();
             emptyDevices.setVisibility(empty ? View.VISIBLE : View.GONE);
             devicesList.setVisibility(empty ? View.GONE : View.VISIBLE);
         });
@@ -332,8 +374,13 @@ public final class SessionActivity extends Activity implements SessionController
     @Override
     public void onFriendlyMessage(int messageResId) {
         runOnUiThread(() -> {
+            statusPanel.setVisibility(View.VISIBLE);
             statusTitle.setText(messageResId);
-            statusBody.setText(R.string.session_retry_body);
+            if (renderedState == SessionController.State.HOST_WAITING) {
+                statusBody.setText(R.string.session_host_waiting_body);
+            } else {
+                statusBody.setText(R.string.session_retry_body);
+            }
         });
     }
 
@@ -343,51 +390,65 @@ public final class SessionActivity extends Activity implements SessionController
     }
 
     private void renderState(SessionController.State state, String peerName) {
+        renderedState = state;
         primaryButton.setOnClickListener(v -> onPrimaryAction());
+        rolePanel.setVisibility(View.GONE);
+        statusPanel.setVisibility(View.VISIBLE);
         connectedPanel.setVisibility(View.GONE);
         devicesPanel.setVisibility(View.GONE);
         progress.setVisibility(View.GONE);
-        primaryButton.setVisibility(View.VISIBLE);
+        primaryButton.setVisibility(View.GONE);
         primaryButton.setEnabled(true);
 
         switch (state) {
             case NEEDS_WIFI:
                 statusTitle.setText(R.string.session_wifi_off_title);
                 statusBody.setText(R.string.session_wifi_off_body);
+                primaryButton.setVisibility(View.VISIBLE);
                 primaryButton.setText(R.string.session_turn_on_wifi);
                 break;
-            case PREPARING:
-                statusTitle.setText(R.string.session_preparing_title);
-                statusBody.setText(R.string.session_preparing_body);
+            case HOST_PREPARING:
+                statusTitle.setText(R.string.session_host_preparing_title);
+                statusBody.setText(R.string.session_host_preparing_body);
                 progress.setVisibility(View.VISIBLE);
-                primaryButton.setText(R.string.session_cancel_action);
+                showCancelButton();
                 break;
-            case DISCOVERING:
-                statusTitle.setText(R.string.session_searching_title);
-                statusBody.setText(R.string.session_searching_body);
+            case HOST_WAITING:
+                statusTitle.setText(R.string.session_host_waiting_title);
+                statusBody.setText(R.string.session_host_waiting_body);
                 progress.setVisibility(View.VISIBLE);
-                primaryButton.setText(R.string.session_stop_search);
+                showCancelButton();
+                break;
+            case JOIN_PREPARING:
+                statusTitle.setText(R.string.session_join_preparing_title);
+                statusBody.setText(R.string.session_join_preparing_body);
+                progress.setVisibility(View.VISIBLE);
+                showCancelButton();
+                break;
+            case JOIN_SEARCHING:
+                statusTitle.setText(R.string.session_join_searching_title);
+                statusBody.setText(R.string.session_join_searching_body);
+                progress.setVisibility(View.VISIBLE);
                 devicesPanel.setVisibility(View.VISIBLE);
+                showCancelButton();
                 break;
-            case CONNECTING:
-                statusTitle.setText(R.string.session_connecting_title);
+            case JOIN_CONNECTING:
+                statusTitle.setText(R.string.session_join_connecting_title);
                 statusBody.setText(getString(
-                        R.string.session_connecting_body,
+                        R.string.session_join_connecting_body,
                         safePeerName(peerName)
                 ));
                 progress.setVisibility(View.VISIBLE);
-                primaryButton.setText(R.string.session_cancel_action);
+                showCancelButton();
                 break;
             case HANDSHAKING:
                 statusTitle.setText(R.string.session_finishing_connection_title);
                 statusBody.setText(R.string.session_finishing_connection_body);
                 progress.setVisibility(View.VISIBLE);
-                primaryButton.setText(R.string.session_cancel_action);
+                showCancelButton();
                 break;
             case CONNECTED:
-                statusTitle.setText(R.string.session_connected_title);
-                statusBody.setText(R.string.session_connected_body);
-                primaryButton.setVisibility(View.GONE);
+                statusPanel.setVisibility(View.GONE);
                 connectedPanel.setVisibility(View.VISIBLE);
                 connectedName.setText(safePeerName(peerName));
                 break;
@@ -395,20 +456,33 @@ public final class SessionActivity extends Activity implements SessionController
                 statusTitle.setText(R.string.session_disconnecting_title);
                 statusBody.setText(R.string.session_disconnecting_body);
                 progress.setVisibility(View.VISIBLE);
-                primaryButton.setVisibility(View.GONE);
                 break;
             case ERROR:
                 statusTitle.setText(R.string.session_connection_failed);
                 statusBody.setText(R.string.session_retry_body);
-                primaryButton.setText(R.string.session_try_again_button);
+                primaryButton.setVisibility(View.VISIBLE);
+                primaryButton.setText(pendingAction == PendingAction.NONE
+                        ? R.string.session_back_to_start
+                        : R.string.session_try_again_button);
                 break;
             case IDLE:
             default:
-                statusTitle.setText(R.string.session_ready_title);
-                statusBody.setText(R.string.session_ready_body);
-                primaryButton.setText(R.string.session_find_devices);
+                if (continueAfterSettings || continueAfterPermission) {
+                    statusTitle.setText(R.string.session_join_preparing_title);
+                    statusBody.setText(R.string.session_join_preparing_body);
+                    progress.setVisibility(View.VISIBLE);
+                } else {
+                    pendingAction = PendingAction.NONE;
+                    statusPanel.setVisibility(View.GONE);
+                    rolePanel.setVisibility(View.VISIBLE);
+                }
                 break;
         }
+    }
+
+    private void showCancelButton() {
+        primaryButton.setVisibility(View.VISIBLE);
+        primaryButton.setText(R.string.session_cancel_action);
     }
 
     private String safePeerName(String value) {

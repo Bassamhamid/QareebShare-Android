@@ -7,37 +7,37 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.net.NetworkInfo;
-import android.net.wifi.WpsInfo;
 import android.net.wifi.WifiManager;
-import android.net.wifi.p2p.WifiP2pConfig;
-import android.net.wifi.p2p.WifiP2pDevice;
 import android.net.wifi.p2p.WifiP2pInfo;
 import android.net.wifi.p2p.WifiP2pManager;
-import android.net.wifi.p2p.nsd.WifiP2pDnsSdServiceInfo;
-import android.net.wifi.p2p.nsd.WifiP2pDnsSdServiceRequest;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 
-import java.net.InetAddress;
-import java.util.ArrayList;
 import java.util.Collections;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 
+/** Coordinates exactly one role at a time: host or joiner. */
 @SuppressLint("MissingPermission")
 final class SessionController {
     enum State {
         IDLE,
         NEEDS_WIFI,
-        PREPARING,
-        DISCOVERING,
-        CONNECTING,
+        HOST_PREPARING,
+        HOST_WAITING,
+        JOIN_PREPARING,
+        JOIN_SEARCHING,
+        JOIN_CONNECTING,
         HANDSHAKING,
         CONNECTED,
         DISCONNECTING,
         ERROR
+    }
+
+    private enum Role {
+        NONE,
+        HOST,
+        JOINER
     }
 
     interface Listener {
@@ -47,14 +47,6 @@ final class SessionController {
         void onWifiRequired();
     }
 
-    private static final String SERVICE_INSTANCE = "QareebShare";
-    private static final String SERVICE_TYPE = "_qareebshare._tcp";
-    private static final long PREPARATION_TIMEOUT_MS = 12_000L;
-    private static final long CONNECT_TIMEOUT_MS = 45_000L;
-    private static final long CONNECTION_INFO_POLL_MS = 750L;
-    private static final int MAX_CONNECT_ATTEMPTS = 2;
-    private static final int MAX_DISCOVERY_ATTEMPTS = 2;
-
     private final Activity activity;
     private final Listener listener;
     private final WifiP2pManager manager;
@@ -62,41 +54,17 @@ final class SessionController {
     private final WifiManager wifiManager;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final IntentFilter intentFilter = new IntentFilter();
-    private final Map<String, PeerDevice> peerMap = new LinkedHashMap<>();
     private final BroadcastReceiver receiver = new P2pReceiver();
 
-    private WifiP2pDnsSdServiceRequest serviceRequest;
-    private SessionTransport transport;
+    private final HostSessionController hostController;
+    private final JoinSessionController joinController;
+
+    private Role role = Role.NONE;
     private State state = State.IDLE;
+    private ActiveSessionTransport transport;
     private boolean receiverRegistered;
-    private boolean transportStarted;
-    private boolean cleanupInProgress;
-    private boolean connectIssued;
-    private int generation;
-    private int connectAttempt;
-    private int discoveryAttempt;
+    private boolean transportStarting;
     private String activePeerName = "";
-    private PeerDevice targetPeer;
-
-    private final Runnable preparationTimeout = () -> {
-        if (!cleanupInProgress) {
-            return;
-        }
-        cleanupInProgress = false;
-        fail(R.string.session_try_again);
-    };
-
-    private final Runnable connectTimeout = () -> {
-        if (state != State.CONNECTING && state != State.HANDSHAKING) {
-            return;
-        }
-        cleanupInProgress = false;
-        connectIssued = false;
-        cancelConnectSilently();
-        closeTransport();
-        removeGroupSilently();
-        fail(R.string.session_connection_timed_out);
-    };
 
     SessionController(Activity activity, Listener listener) {
         this.activity = activity;
@@ -107,19 +75,36 @@ final class SessionController {
         channel = manager == null ? null : manager.initialize(
                 activity,
                 activity.getMainLooper(),
-                () -> {
-                    cleanupInProgress = false;
-                    connectIssued = false;
-                    fail(R.string.session_connection_lost);
-                }
+                () -> fail(R.string.session_connection_lost)
         );
+
+        if (manager != null && channel != null) {
+            hostController = new HostSessionController(
+                    manager,
+                    channel,
+                    mainHandler,
+                    localDeviceName(),
+                    new HostCallbacks()
+            );
+            joinController = new JoinSessionController(
+                    manager,
+                    channel,
+                    mainHandler,
+                    new JoinCallbacks()
+            );
+        } else {
+            hostController = null;
+            joinController = null;
+        }
 
         intentFilter.addAction(WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION);
         intentFilter.addAction(WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION);
+        intentFilter.addAction(WifiP2pManager.WIFI_P2P_THIS_DEVICE_CHANGED_ACTION);
     }
 
     boolean isSupported() {
-        return manager != null && channel != null;
+        return manager != null && channel != null
+                && hostController != null && joinController != null;
     }
 
     boolean isWifiEnabled() {
@@ -141,6 +126,7 @@ final class SessionController {
         }
         receiverRegistered = true;
         refreshWifiState();
+        requestCurrentConnectionInfo();
     }
 
     void unregister() {
@@ -160,11 +146,7 @@ final class SessionController {
             return;
         }
         if (!isWifiEnabled()) {
-            generation++;
-            cancelAllTimeouts();
-            cleanupInProgress = false;
-            connectIssued = false;
-            closeTransport();
+            closeTransport(true);
             setState(State.NEEDS_WIFI, "");
             listener.onWifiRequired();
         } else if (state == State.NEEDS_WIFI) {
@@ -172,62 +154,39 @@ final class SessionController {
         }
     }
 
-    void startSearch() {
-        if (!isSupported()) {
-            fail(R.string.session_not_supported);
+    void createSession() {
+        if (!prepareForAction()) {
             return;
         }
-        if (!isWifiEnabled()) {
-            setState(State.NEEDS_WIFI, "");
-            listener.onWifiRequired();
-            return;
-        }
-        if (state == State.CONNECTED) {
-            return;
-        }
-
-        generation++;
-        int expectedGeneration = generation;
-        connectAttempt = 0;
-        discoveryAttempt = 0;
-        targetPeer = null;
-        activePeerName = "";
-        connectIssued = false;
-        cancelAllTimeouts();
-        closeTransport();
-        peerMap.clear();
-        listener.onPeersChanged(Collections.emptyList());
-        setState(State.PREPARING, "");
-
-        prepareEnvironment(expectedGeneration, () -> configureServiceDiscovery(expectedGeneration));
+        stopRoleWithoutState(() -> {
+            role = Role.HOST;
+            activePeerName = "";
+            listener.onPeersChanged(Collections.emptyList());
+            hostController.start();
+        });
     }
 
-    void connect(PeerDevice peer) {
-        if (peer == null || peer.address.isEmpty() || !peer.isAvailable()) {
+    void findSessions() {
+        if (!prepareForAction()) {
+            return;
+        }
+        stopRoleWithoutState(() -> {
+            role = Role.JOINER;
+            activePeerName = "";
+            joinController.start();
+        });
+    }
+
+    void join(PeerDevice host) {
+        if (role != Role.JOINER || state != State.JOIN_SEARCHING) {
+            return;
+        }
+        if (host == null || !host.isAvailable()) {
             listener.onFriendlyMessage(R.string.session_device_unavailable);
             return;
         }
-        if (!isWifiEnabled()) {
-            setState(State.NEEDS_WIFI, "");
-            listener.onWifiRequired();
-            return;
-        }
-        if (state == State.CONNECTING || state == State.HANDSHAKING
-                || state == State.CONNECTED || state == State.DISCONNECTING) {
-            return;
-        }
-
-        generation++;
-        int expectedGeneration = generation;
-        targetPeer = peer;
-        connectAttempt = 0;
-        activePeerName = peer.name;
-        connectIssued = false;
-        cancelAllTimeouts();
-        setState(State.CONNECTING, activePeerName);
-        mainHandler.postDelayed(connectTimeout, CONNECT_TIMEOUT_MS);
-
-        prepareEnvironment(expectedGeneration, () -> performConnect(expectedGeneration));
+        activePeerName = host.name;
+        joinController.join(host);
     }
 
     void cancelCurrentAction() {
@@ -235,380 +194,104 @@ final class SessionController {
             disconnect();
             return;
         }
-        generation++;
-        cancelAllTimeouts();
-        cleanupInProgress = false;
-        connectIssued = false;
-        cancelConnectSilently();
-        closeTransport();
-        cleanupDiscovery();
-        removeGroupSilently();
-        activePeerName = "";
-        targetPeer = null;
-        setState(State.IDLE, "");
+        setState(State.DISCONNECTING, activePeerName);
+        closeTransport(true);
+        stopRoleWithoutState(() -> {
+            role = Role.NONE;
+            activePeerName = "";
+            listener.onPeersChanged(Collections.emptyList());
+            setState(State.IDLE, "");
+        });
     }
 
     void disconnect() {
         if (state == State.IDLE || state == State.DISCONNECTING) {
             return;
         }
-        generation++;
-        cancelAllTimeouts();
-        cleanupInProgress = true;
-        connectIssued = false;
         setState(State.DISCONNECTING, activePeerName);
-        closeTransport();
-        cleanupDiscovery();
-        cancelConnectSilently();
-        removeExistingGroup(generation, () -> {
-            cleanupInProgress = false;
+        closeTransport(true);
+        stopRoleWithoutState(() -> {
+            role = Role.NONE;
             activePeerName = "";
-            targetPeer = null;
-            setState(isWifiEnabled() ? State.IDLE : State.NEEDS_WIFI, "");
+            listener.onPeersChanged(Collections.emptyList());
+            setState(State.IDLE, "");
         });
     }
 
     void shutdown() {
-        generation++;
-        cancelAllTimeouts();
-        cleanupInProgress = false;
-        connectIssued = false;
         unregister();
-        cleanupDiscovery();
-        cancelConnectSilently();
-        closeTransport();
-        removeGroupSilently();
-    }
-
-    private void prepareEnvironment(int expectedGeneration, Runnable onReady) {
-        if (!isGenerationCurrent(expectedGeneration)) {
+        closeTransport(true);
+        if (!isSupported()) {
             return;
         }
-        cleanupInProgress = true;
-        mainHandler.removeCallbacks(preparationTimeout);
-        mainHandler.postDelayed(preparationTimeout, PREPARATION_TIMEOUT_MS);
-
-        clearDiscoveryState(expectedGeneration, () -> cancelPendingConnection(
-                expectedGeneration,
-                () -> removeExistingGroup(expectedGeneration, () -> {
-                    if (!isGenerationCurrent(expectedGeneration)) {
-                        return;
-                    }
-                    cleanupInProgress = false;
-                    mainHandler.removeCallbacks(preparationTimeout);
-                    onReady.run();
-                })
-        ));
+        if (role == Role.HOST) {
+            hostController.stop(() -> { });
+        } else if (role == Role.JOINER) {
+            joinController.stop(() -> { });
+        }
+        role = Role.NONE;
     }
 
-    private void clearDiscoveryState(int expectedGeneration, Runnable next) {
-        if (!isGenerationCurrent(expectedGeneration)) {
+    private boolean prepareForAction() {
+        if (!isSupported()) {
+            fail(R.string.session_not_supported);
+            return false;
+        }
+        if (!isWifiEnabled()) {
+            setState(State.NEEDS_WIFI, "");
+            listener.onWifiRequired();
+            return false;
+        }
+        if (state == State.DISCONNECTING) {
+            return false;
+        }
+        closeTransport(true);
+        return true;
+    }
+
+    private void stopRoleWithoutState(Runnable completion) {
+        if (!isSupported()) {
+            completion.run();
             return;
         }
-        serviceRequest = null;
-        runAction(
-                listener -> manager.stopPeerDiscovery(channel, listener),
-                expectedGeneration,
-                () -> runAction(
-                        listener -> manager.clearServiceRequests(channel, listener),
-                        expectedGeneration,
-                        () -> runAction(
-                                listener -> manager.clearLocalServices(channel, listener),
-                                expectedGeneration,
-                                next
-                        )
-                )
-        );
+        if (role == Role.HOST) {
+            hostController.stop(completion);
+        } else if (role == Role.JOINER) {
+            joinController.stop(completion);
+        } else {
+            completion.run();
+        }
     }
 
-    private void cancelPendingConnection(int expectedGeneration, Runnable next) {
-        runAction(
-                listener -> manager.cancelConnect(channel, listener),
-                expectedGeneration,
-                next
-        );
-    }
-
-    private void removeExistingGroup(int expectedGeneration, Runnable next) {
-        if (!isGenerationCurrent(expectedGeneration)) {
+    private void startHostTransport() {
+        if (role != Role.HOST || transportStarting || transport != null) {
             return;
         }
-        try {
-            manager.requestGroupInfo(channel, group -> {
-                if (!isGenerationCurrent(expectedGeneration)) {
-                    return;
-                }
-                if (group == null) {
-                    next.run();
-                    return;
-                }
-                removeGroupWithRetry(expectedGeneration, 0, next);
-            });
-        } catch (RuntimeException error) {
-            next.run();
-        }
+        transportStarting = true;
+        createTransport(true, null);
     }
 
-    private void removeGroupWithRetry(int expectedGeneration, int attempt, Runnable next) {
-        if (!isGenerationCurrent(expectedGeneration)) {
+    private void startClientTransport(String hostAddress) {
+        if (role != Role.JOINER || transportStarting || transport != null) {
             return;
         }
-        try {
-            manager.removeGroup(channel, new WifiP2pManager.ActionListener() {
-                @Override
-                public void onSuccess() {
-                    if (isGenerationCurrent(expectedGeneration)) {
-                        next.run();
-                    }
-                }
-
-                @Override
-                public void onFailure(int reason) {
-                    if (!isGenerationCurrent(expectedGeneration)) {
-                        return;
-                    }
-                    if (reason == WifiP2pManager.BUSY && attempt == 0) {
-                        mainHandler.postDelayed(
-                                () -> removeGroupWithRetry(expectedGeneration, 1, next),
-                                500L
-                        );
-                    } else {
-                        next.run();
-                    }
-                }
-            });
-        } catch (RuntimeException error) {
-            next.run();
-        }
-    }
-
-    private interface ActionStarter {
-        void start(WifiP2pManager.ActionListener listener);
-    }
-
-    private void runAction(ActionStarter starter, int expectedGeneration, Runnable next) {
-        if (!isGenerationCurrent(expectedGeneration)) {
-            return;
-        }
-        try {
-            starter.start(new WifiP2pManager.ActionListener() {
-                @Override
-                public void onSuccess() {
-                    if (isGenerationCurrent(expectedGeneration)) {
-                        next.run();
-                    }
-                }
-
-                @Override
-                public void onFailure(int reason) {
-                    if (isGenerationCurrent(expectedGeneration)) {
-                        next.run();
-                    }
-                }
-            });
-        } catch (RuntimeException error) {
-            next.run();
-        }
-    }
-
-    private void configureServiceDiscovery(int expectedGeneration) {
-        if (!isGenerationCurrent(expectedGeneration) || !isWifiEnabled()) {
-            return;
-        }
-        discoveryAttempt++;
-
-        Map<String, String> record = new LinkedHashMap<>();
-        record.put("app", "qareebshare");
-        record.put("version", "1");
-        record.put("name", localDeviceName());
-        WifiP2pDnsSdServiceInfo serviceInfo = WifiP2pDnsSdServiceInfo.newInstance(
-                SERVICE_INSTANCE,
-                SERVICE_TYPE,
-                record
-        );
-
-        manager.setDnsSdResponseListeners(
-                channel,
-                (instanceName, registrationType, device) -> {
-                    if (!isGenerationCurrent(expectedGeneration)
-                            || state != State.DISCOVERING
-                            || !SERVICE_INSTANCE.equals(instanceName)
-                            || registrationType == null
-                            || !registrationType.startsWith(SERVICE_TYPE)) {
-                        return;
-                    }
-                    addPeer(device);
-                },
-                (fullDomainName, txtRecordMap, device) -> {
-                    if (!isGenerationCurrent(expectedGeneration)
-                            || state != State.DISCOVERING
-                            || txtRecordMap == null
-                            || !"qareebshare".equals(txtRecordMap.get("app"))) {
-                        return;
-                    }
-                    addPeer(device);
-                }
-        );
-
-        manager.addLocalService(channel, serviceInfo, new WifiP2pManager.ActionListener() {
-            @Override
-            public void onSuccess() {
-                addServiceRequestAndDiscover(expectedGeneration);
-            }
-
-            @Override
-            public void onFailure(int reason) {
-                handleDiscoveryFailure(expectedGeneration, reason);
-            }
-        });
-    }
-
-    private void addServiceRequestAndDiscover(int expectedGeneration) {
-        if (!isGenerationCurrent(expectedGeneration)) {
-            return;
-        }
-        serviceRequest = WifiP2pDnsSdServiceRequest.newInstance(SERVICE_TYPE);
-        manager.addServiceRequest(channel, serviceRequest, new WifiP2pManager.ActionListener() {
-            @Override
-            public void onSuccess() {
-                manager.discoverServices(channel, new WifiP2pManager.ActionListener() {
-                    @Override
-                    public void onSuccess() {
-                        if (isGenerationCurrent(expectedGeneration)) {
-                            setState(State.DISCOVERING, "");
-                        }
-                    }
-
-                    @Override
-                    public void onFailure(int reason) {
-                        handleDiscoveryFailure(expectedGeneration, reason);
-                    }
-                });
-            }
-
-            @Override
-            public void onFailure(int reason) {
-                handleDiscoveryFailure(expectedGeneration, reason);
-            }
-        });
-    }
-
-    private void handleDiscoveryFailure(int expectedGeneration, int reason) {
-        if (!isGenerationCurrent(expectedGeneration)) {
-            return;
-        }
-        if (reason == WifiP2pManager.BUSY && discoveryAttempt < MAX_DISCOVERY_ATTEMPTS) {
-            setState(State.PREPARING, "");
-            prepareEnvironment(expectedGeneration, () -> configureServiceDiscovery(expectedGeneration));
-            return;
-        }
-        fail(messageForReason(reason));
-    }
-
-    private void addPeer(WifiP2pDevice device) {
-        if (device == null || device.deviceAddress == null
-                || device.deviceAddress.trim().isEmpty()) {
-            return;
-        }
-        PeerDevice peer = new PeerDevice(
-                device.deviceName,
-                device.deviceAddress,
-                device.status
-        );
-        peerMap.put(peer.address, peer);
-        ArrayList<PeerDevice> result = new ArrayList<>(peerMap.values());
-        Collections.sort(result, (left, right) -> left.name.compareToIgnoreCase(right.name));
-        listener.onPeersChanged(result);
-    }
-
-    private void performConnect(int expectedGeneration) {
-        PeerDevice peer = targetPeer;
-        if (!isGenerationCurrent(expectedGeneration)
-                || peer == null
-                || state != State.CONNECTING) {
-            return;
-        }
-        connectAttempt++;
-        connectIssued = true;
-        WifiP2pConfig config = new WifiP2pConfig();
-        config.deviceAddress = peer.address;
-        config.wps.setup = WpsInfo.PBC;
-        config.groupOwnerIntent = 7;
-        manager.connect(channel, config, new WifiP2pManager.ActionListener() {
-            @Override
-            public void onSuccess() {
-                pollConnectionInfo(expectedGeneration);
-            }
-
-            @Override
-            public void onFailure(int reason) {
-                connectIssued = false;
-                if (!isGenerationCurrent(expectedGeneration)) {
-                    return;
-                }
-                if (reason == WifiP2pManager.BUSY
-                        && connectAttempt < MAX_CONNECT_ATTEMPTS) {
-                    prepareEnvironment(expectedGeneration, () -> performConnect(expectedGeneration));
-                } else {
-                    fail(messageForReason(reason));
-                }
-            }
-        });
-    }
-
-    private void pollConnectionInfo(int expectedGeneration) {
-        if (!isGenerationCurrent(expectedGeneration)
-                || (state != State.CONNECTING && state != State.HANDSHAKING)
-                || transportStarted) {
-            return;
-        }
-        try {
-            manager.requestConnectionInfo(channel, info -> {
-                if (!isGenerationCurrent(expectedGeneration)) {
-                    return;
-                }
-                if (info != null && info.groupFormed) {
-                    handleConnectionInfo(expectedGeneration, info);
-                } else {
-                    mainHandler.postDelayed(
-                            () -> pollConnectionInfo(expectedGeneration),
-                            CONNECTION_INFO_POLL_MS
-                    );
-                }
-            });
-        } catch (RuntimeException error) {
-            mainHandler.postDelayed(
-                    () -> pollConnectionInfo(expectedGeneration),
-                    CONNECTION_INFO_POLL_MS
-            );
-        }
-    }
-
-    private void handleConnectionInfo(int expectedGeneration, WifiP2pInfo info) {
-        if (!isGenerationCurrent(expectedGeneration)
-                || info == null
-                || !info.groupFormed
-                || transportStarted) {
-            return;
-        }
-        cleanupInProgress = false;
-        connectIssued = true;
-        cleanupDiscovery();
-        transportStarted = true;
+        transportStarting = true;
         setState(State.HANDSHAKING, activePeerName);
+        createTransport(false, hostAddress);
+    }
 
-        final SessionTransport[] holder = new SessionTransport[1];
-        SessionTransport newTransport = new SessionTransport(
+    private void createTransport(boolean server, String hostAddress) {
+        final ActiveSessionTransport[] holder = new ActiveSessionTransport[1];
+        ActiveSessionTransport created = new ActiveSessionTransport(
                 localDeviceName(),
-                new SessionTransport.Callback() {
+                new ActiveSessionTransport.Callback() {
                     @Override
                     public void onConnected(String peerName) {
                         mainHandler.post(() -> {
-                            if (transport != holder[0]
-                                    || !isGenerationCurrent(expectedGeneration)) {
+                            if (transport != holder[0]) {
                                 return;
                             }
-                            cancelAllTimeouts();
+                            transportStarting = false;
                             activePeerName = peerName;
                             setState(State.CONNECTED, peerName);
                         });
@@ -616,103 +299,114 @@ final class SessionController {
 
                     @Override
                     public void onClosed(boolean unexpected) {
-                        mainHandler.post(() -> {
-                            if (transport != holder[0]
-                                    || !isGenerationCurrent(expectedGeneration)) {
-                                return;
-                            }
-                            transport = null;
-                            transportStarted = false;
-                            connectIssued = false;
-                            cancelAllTimeouts();
-                            if (state == State.DISCONNECTING || state == State.IDLE) {
-                                return;
-                            }
-                            activePeerName = "";
-                            setState(State.ERROR, "");
-                            listener.onFriendlyMessage(
-                                    unexpected
-                                            ? R.string.session_connection_lost
-                                            : R.string.session_connection_failed
-                            );
-                        });
+                        mainHandler.post(() -> handleTransportClosed(holder[0], unexpected));
                     }
                 }
         );
-        holder[0] = newTransport;
-        transport = newTransport;
-        if (info.isGroupOwner) {
-            newTransport.startServer();
+        holder[0] = created;
+        transport = created;
+        if (server) {
+            created.startServer();
         } else {
-            InetAddress address = info.groupOwnerAddress;
-            String host = address == null ? null : address.getHostAddress();
-            newTransport.startClient(host);
+            created.startClient(hostAddress);
         }
     }
 
-    private void cleanupDiscovery() {
-        if (!isSupported()) {
+    private void handleTransportClosed(
+            ActiveSessionTransport closedTransport,
+            boolean unexpected
+    ) {
+        if (transport != closedTransport) {
             return;
         }
-        WifiP2pManager.ActionListener ignored = ignoredListener();
-        try {
-            manager.stopPeerDiscovery(channel, ignored);
-            manager.clearServiceRequests(channel, ignored);
-            manager.clearLocalServices(channel, ignored);
-            serviceRequest = null;
-        } catch (RuntimeException ignoredError) {
+        transport = null;
+        transportStarting = false;
+        if (state == State.DISCONNECTING || state == State.IDLE) {
+            return;
         }
-    }
 
-    private void cancelConnectSilently() {
-        if (!isSupported()) {
+        if (role == Role.HOST) {
+            boolean hadPeer = state == State.CONNECTED || state == State.HANDSHAKING;
+            activePeerName = "";
+            setState(State.HOST_WAITING, "");
+            startHostTransport();
+            if (unexpected && hadPeer) {
+                listener.onFriendlyMessage(R.string.session_peer_left);
+            }
             return;
         }
-        try {
-            manager.cancelConnect(channel, ignoredListener());
-        } catch (RuntimeException ignored) {
-        }
-    }
 
-    private void removeGroupSilently() {
-        if (!isSupported()) {
-            return;
-        }
-        try {
-            manager.requestGroupInfo(channel, group -> {
-                if (group != null) {
-                    manager.removeGroup(channel, ignoredListener());
+        if (role == Role.JOINER) {
+            activePeerName = "";
+            joinController.stop(() -> {
+                role = Role.NONE;
+                setState(State.IDLE, "");
+                if (unexpected) {
+                    listener.onFriendlyMessage(R.string.session_connection_lost);
                 }
             });
-        } catch (RuntimeException ignored) {
         }
     }
 
-    private void closeTransport() {
-        SessionTransport current = transport;
+    private void closeTransport(boolean userInitiated) {
+        ActiveSessionTransport current = transport;
         transport = null;
-        transportStarted = false;
+        transportStarting = false;
         if (current != null) {
             current.closeByUser();
         }
     }
 
-    private void cancelAllTimeouts() {
-        mainHandler.removeCallbacks(preparationTimeout);
-        mainHandler.removeCallbacks(connectTimeout);
+    private void requestCurrentConnectionInfo() {
+        if (!isSupported() || role == Role.NONE) {
+            return;
+        }
+        try {
+            manager.requestConnectionInfo(channel, this::handleConnectionInfo);
+        } catch (RuntimeException ignored) {
+        }
     }
 
-    private void fail(int messageResId) {
-        cancelAllTimeouts();
-        cleanupInProgress = false;
-        connectIssued = false;
-        closeTransport();
-        cleanupDiscovery();
-        cancelConnectSilently();
-        removeGroupSilently();
-        activePeerName = "";
-        setState(State.ERROR, "");
-        listener.onFriendlyMessage(messageResId);
+    private void handleConnectionInfo(WifiP2pInfo info) {
+        if (role == Role.HOST) {
+            hostController.onConnectionInfo(info);
+        } else if (role == Role.JOINER) {
+            joinController.onConnectionInfo(info);
+        }
+    }
+
+    private void handleDisconnectedBroadcast() {
+        if (state == State.DISCONNECTING || state == State.IDLE
+                || state == State.NEEDS_WIFI || role == Role.NONE) {
+            return;
+        }
+        if (role == Role.HOST) {
+            if (state == State.CONNECTED || state == State.HANDSHAKING) {
+                ActiveSessionTransport current = transport;
+                transport = null;
+                transportStarting = false;
+                if (current != null) {
+                    current.closeByUser();
+                }
+                activePeerName = "";
+                setState(State.HOST_WAITING, "");
+                startHostTransport();
+                listener.onFriendlyMessage(R.string.session_peer_left);
+            }
+            // A host group can exist while no client is connected. Do not tear it down.
+            return;
+        }
+        if (role == Role.JOINER && state == State.CONNECTED) {
+            closeTransport(true);
+            joinController.stop(() -> {
+                role = Role.NONE;
+                activePeerName = "";
+                setState(State.IDLE, "");
+                listener.onFriendlyMessage(R.string.session_connection_lost);
+            });
+        }
+        // Disconnected broadcasts while JOIN_CONNECTING can be transient. The
+        // explicit connection timeout remains the source of truth.
     }
 
     private void setState(State newState, String peerName) {
@@ -720,37 +414,105 @@ final class SessionController {
         listener.onStateChanged(newState, peerName == null ? "" : peerName);
     }
 
-    private boolean isGenerationCurrent(int expectedGeneration) {
-        return expectedGeneration == generation && isWifiEnabled();
-    }
-
-    private int messageForReason(int reason) {
-        if (reason == WifiP2pManager.P2P_UNSUPPORTED) {
-            return R.string.session_not_supported;
+    private void fail(int messageResId) {
+        Role failedRole = role;
+        role = Role.NONE;
+        activePeerName = "";
+        closeTransport(true);
+        if (failedRole == Role.HOST) {
+            hostController.stop(() -> { });
+        } else if (failedRole == Role.JOINER) {
+            joinController.stop(() -> { });
         }
-        if (reason == WifiP2pManager.BUSY) {
-            return R.string.session_try_again;
-        }
-        return R.string.session_connection_failed;
+        setState(State.ERROR, "");
+        listener.onFriendlyMessage(messageResId);
     }
 
     private String localDeviceName() {
         String manufacturer = Build.MANUFACTURER == null ? "" : Build.MANUFACTURER.trim();
         String model = Build.MODEL == null ? "" : Build.MODEL.trim();
-        String value = (manufacturer + " " + model).trim();
-        return value.isEmpty() ? "هاتف قريب" : value;
+        if (model.isEmpty()) {
+            return activity.getString(R.string.session_nearby_phone);
+        }
+        if (!manufacturer.isEmpty()
+                && !model.toLowerCase().startsWith(manufacturer.toLowerCase())) {
+            return manufacturer + " " + model;
+        }
+        return model;
     }
 
-    private WifiP2pManager.ActionListener ignoredListener() {
-        return new WifiP2pManager.ActionListener() {
-            @Override
-            public void onSuccess() {
-            }
+    private final class HostCallbacks implements HostSessionController.Callback {
+        @Override
+        public void onPreparing() {
+            setState(State.HOST_PREPARING, "");
+        }
 
-            @Override
-            public void onFailure(int reason) {
+        @Override
+        public void onGroupReady() {
+            if (role != Role.HOST) {
+                return;
             }
-        };
+            startHostTransport();
+        }
+
+        @Override
+        public void onWaiting() {
+            if (role == Role.HOST
+                    && state != State.CONNECTED
+                    && state != State.HANDSHAKING) {
+                setState(State.HOST_WAITING, "");
+            }
+        }
+
+        @Override
+        public void onFailure(int messageResId) {
+            if (role == Role.HOST) {
+                fail(messageResId);
+            }
+        }
+    }
+
+    private final class JoinCallbacks implements JoinSessionController.Callback {
+        @Override
+        public void onPreparing() {
+            setState(State.JOIN_PREPARING, "");
+        }
+
+        @Override
+        public void onSearching() {
+            if (role == Role.JOINER) {
+                setState(State.JOIN_SEARCHING, "");
+            }
+        }
+
+        @Override
+        public void onHostsChanged(List<PeerDevice> hosts) {
+            if (role == Role.JOINER) {
+                listener.onPeersChanged(hosts);
+            }
+        }
+
+        @Override
+        public void onConnecting(String hostName) {
+            if (role == Role.JOINER) {
+                activePeerName = hostName;
+                setState(State.JOIN_CONNECTING, hostName);
+            }
+        }
+
+        @Override
+        public void onHostAddressReady(String hostAddress) {
+            if (role == Role.JOINER) {
+                startClientTransport(hostAddress);
+            }
+        }
+
+        @Override
+        public void onFailure(int messageResId) {
+            if (role == Role.JOINER) {
+                fail(messageResId);
+            }
+        }
     }
 
     private final class P2pReceiver extends BroadcastReceiver {
@@ -758,15 +520,12 @@ final class SessionController {
         public void onReceive(Context context, Intent intent) {
             String action = intent.getAction();
             if (WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION.equals(action)) {
-                int value = intent.getIntExtra(WifiP2pManager.EXTRA_WIFI_STATE, -1);
-                boolean enabled = value == WifiP2pManager.WIFI_P2P_STATE_ENABLED;
-                if (!enabled) {
-                    generation++;
-                    cancelAllTimeouts();
-                    cleanupInProgress = false;
-                    connectIssued = false;
-                    closeTransport();
-                    activePeerName = "";
+                int value = intent.getIntExtra(
+                        WifiP2pManager.EXTRA_WIFI_STATE,
+                        WifiP2pManager.WIFI_P2P_STATE_DISABLED
+                );
+                if (value != WifiP2pManager.WIFI_P2P_STATE_ENABLED) {
+                    closeTransport(true);
                     setState(State.NEEDS_WIFI, "");
                     listener.onWifiRequired();
                 } else if (state == State.NEEDS_WIFI) {
@@ -789,29 +548,10 @@ final class SessionController {
                     );
                 }
                 if (networkInfo != null && networkInfo.isConnected()) {
-                    int expectedGeneration = generation;
-                    manager.requestConnectionInfo(
-                            channel,
-                            info -> handleConnectionInfo(expectedGeneration, info)
-                    );
-                    return;
+                    requestCurrentConnectionInfo();
+                } else {
+                    handleDisconnectedBroadcast();
                 }
-
-                if (cleanupInProgress) {
-                    return;
-                }
-
-                if (state == State.CONNECTED || state == State.HANDSHAKING) {
-                    cancelAllTimeouts();
-                    closeTransport();
-                    connectIssued = false;
-                    activePeerName = "";
-                    setState(State.ERROR, "");
-                    listener.onFriendlyMessage(R.string.session_connection_lost);
-                }
-                // During CONNECTING, transient disconnected broadcasts are expected while
-                // Android negotiates or removes a previous group. The explicit timeout and
-                // connection-info polling decide whether the attempt really failed.
             }
         }
     }

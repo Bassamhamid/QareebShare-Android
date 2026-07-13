@@ -42,13 +42,6 @@ final class SessionPeerAdapter extends BaseAdapter {
     }
 
     @Override
-    public boolean isEnabled(int position) {
-        return position >= 0
-                && position < items.size()
-                && items.get(position).isAvailable();
-    }
-
-    @Override
     public View getView(int position, View convertView, ViewGroup parent) {
         ViewHolder holder;
         if (convertView == null) {
@@ -63,7 +56,7 @@ final class SessionPeerAdapter extends BaseAdapter {
 
         PeerDevice peer = getItem(position);
         holder.name.setText(peer.name);
-        holder.subtitle.setText(R.string.session_tap_to_connect);
+        holder.subtitle.setText(R.string.session_tap_to_join);
         convertView.setEnabled(peer.isAvailable());
         convertView.setAlpha(peer.isAvailable() ? 1.0f : 0.55f);
         return convertView;

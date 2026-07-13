@@ -10,54 +10,63 @@
     </string-array>
     <string name="session_cancel">إلغاء</string>
 
-    <string name="session_ready_title">جاهز للاتصال</string>
-    <string name="session_ready_body">افتح قريب شير في الهاتف الآخر، ثم ابدأ البحث.</string>
-    <string name="session_find_devices">العثور على هاتف قريب</string>
+    <string name="session_choice_title">ابدأ الاتصال بين الهاتفين</string>
+    <string name="session_choice_body">أنشئ الجلسة في هاتف واحد فقط، ثم انضم إليها من الهاتف الآخر.</string>
+    <string name="session_create_button">إنشاء جلسة</string>
+    <string name="session_create_hint">اختره في الهاتف الذي سيستقبل الانضمام</string>
+    <string name="session_join_button">الانضمام إلى جلسة</string>
+    <string name="session_join_hint">اختره في الهاتف الثاني للبحث عن الجلسة</string>
 
     <string name="session_wifi_off_title">Wi‑Fi متوقف</string>
-    <string name="session_wifi_off_body">شغّل Wi‑Fi في الهاتفين لإنشاء اتصال مباشر بينهما.</string>
-    <string name="session_turn_on_wifi">تشغيل Wi‑Fi</string>
+    <string name="session_wifi_off_body">شغّل Wi‑Fi لمتابعة الاتصال بين الهاتفين.</string>
+    <string name="session_turn_on_wifi">فتح إعدادات Wi‑Fi</string>
 
-    <string name="session_preparing_title">جارٍ الاستعداد</string>
-    <string name="session_preparing_body">يتم تجهيز الهاتف للعثور على الأجهزة القريبة.</string>
-    <string name="session_searching_title">جارٍ البحث</string>
-    <string name="session_searching_body">أبقِ قريب شير مفتوحاً في الهاتف الآخر.</string>
-    <string name="session_stop_search">إيقاف البحث</string>
-    <string name="session_cancel_action">إلغاء</string>
+    <string name="session_host_preparing_title">جارٍ إنشاء الجلسة</string>
+    <string name="session_host_preparing_body">انتظر قليلاً حتى تصبح الجلسة جاهزة للانضمام.</string>
+    <string name="session_host_waiting_title">الجلسة جاهزة</string>
+    <string name="session_host_waiting_body">في الهاتف الآخر اختر «الانضمام إلى جلسة»، ثم اختر هذا الهاتف.</string>
 
-    <string name="session_nearby_devices_title">الأجهزة القريبة</string>
-    <string name="session_no_devices_yet">لم يظهر أي هاتف بعد. قرّب الهاتفين وانتظر قليلاً.</string>
-    <string name="session_tap_to_connect">اضغط للاتصال</string>
+    <string name="session_join_preparing_title">جارٍ الاستعداد للبحث</string>
+    <string name="session_join_preparing_body">يتم تجهيز الهاتف للعثور على الجلسات القريبة.</string>
+    <string name="session_join_searching_title">جارٍ البحث عن جلسة</string>
+    <string name="session_join_searching_body">تأكد أن الهاتف الآخر يعرض عبارة «الجلسة جاهزة».</string>
+    <string name="session_available_sessions_title">الجلسات القريبة</string>
+    <string name="session_no_sessions_yet">لم تظهر جلسة بعد. أنشئ جلسة في الهاتف الآخر وانتظر قليلاً.</string>
+    <string name="session_tap_to_join">اضغط للانضمام</string>
     <string name="session_device_symbol">↔</string>
     <string name="session_chevron">‹</string>
-    <string name="session_device_unavailable">هذا الهاتف غير متاح الآن</string>
+    <string name="session_device_unavailable">هذه الجلسة غير متاحة الآن</string>
     <string name="session_nearby_phone">هاتف قريب</string>
 
-    <string name="session_connecting_title">جارٍ الاتصال</string>
-    <string name="session_connecting_body">يتم الاتصال بـ %1$s. قد يظهر طلب موافقة في الهاتف الآخر.</string>
-    <string name="session_finishing_connection_title">يتم تجهيز الجلسة</string>
+    <string name="session_join_connecting_title">جارٍ الانضمام</string>
+    <string name="session_join_connecting_body">يتم الانضمام إلى جلسة %1$s. وافق على الطلب إذا ظهر في الهاتف الآخر.</string>
+    <string name="session_finishing_connection_title">يتم تجهيز الاتصال</string>
     <string name="session_finishing_connection_body">انتظر لحظات حتى يصبح الهاتفان جاهزين.</string>
     <string name="session_connected_title">تم الاتصال بنجاح</string>
-    <string name="session_connected_body">الجلسة نشطة، وسيبقى الهاتفان متصلين حتى تنهيها.</string>
-    <string name="session_connected_with">متصل الآن بـ</string>
-    <string name="session_active_body">أبقِ التطبيق مفتوحاً أثناء الجلسة.</string>
+    <string name="session_active_body">الجلسة نشطة وسيبقى الهاتفان متصلين حتى تنهيها.</string>
     <string name="session_disconnect">إنهاء الجلسة</string>
     <string name="session_disconnecting_title">جارٍ إنهاء الجلسة</string>
     <string name="session_disconnecting_body">يتم قطع الاتصال بأمان.</string>
+    <string name="session_peer_left">غادر الهاتف الآخر الجلسة</string>
 
     <string name="session_not_supported">هذا الهاتف لا يدعم الاتصال المباشر</string>
-    <string name="session_try_again">تعذر بدء الاتصال الآن</string>
-    <string name="session_connection_failed">تعذر الاتصال بهذا الهاتف</string>
+    <string name="session_could_not_create">تعذر إنشاء الجلسة الآن</string>
+    <string name="session_search_failed">تعذر البحث عن الجلسات الآن</string>
+    <string name="session_phone_busy">الهاتف مشغول باتصال آخر</string>
+    <string name="session_wrong_connection_role">تعذر الانضمام إلى هذه الجلسة</string>
+    <string name="session_connection_failed">تعذر إكمال الاتصال</string>
     <string name="session_connection_timed_out">استغرق الاتصال وقتاً طويلاً</string>
     <string name="session_connection_lost">انقطع الاتصال بين الهاتفين</string>
     <string name="session_retry_body">قرّب الهاتفين، وتأكد من تشغيل Wi‑Fi، ثم حاول مجدداً.</string>
     <string name="session_try_again_button">المحاولة مجدداً</string>
+    <string name="session_back_to_start">العودة للبداية</string>
+    <string name="session_cancel_action">إلغاء</string>
 
     <string name="session_permission_title">يلزم السماح بالعثور على الأجهزة القريبة</string>
-    <string name="session_permission_body">اسمح للتطبيق بالوصول إلى الأجهزة القريبة حتى يظهر الهاتف الآخر.</string>
+    <string name="session_permission_body">اسمح للتطبيق بالوصول إلى الأجهزة القريبة لإتمام الاتصال.</string>
     <string name="session_location_title">يلزم تشغيل الموقع</string>
-    <string name="session_location_body">في هذا الإصدار من أندرويد، يجب تشغيل الموقع أثناء البحث عن هاتف قريب.</string>
-    <string name="session_open_location">تشغيل الموقع</string>
+    <string name="session_location_body">في هذا الإصدار من أندرويد، يجب تشغيل الموقع أثناء البحث أو إنشاء الجلسة.</string>
+    <string name="session_open_location">فتح إعدادات الموقع</string>
 
     <string name="session_privacy_note">تبقى الملفات بين الهاتفين ولا تُرفع إلى أي خادم.</string>
 </resources>
