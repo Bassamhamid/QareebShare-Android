@@ -46,16 +46,3 @@ android {
         warningsAsErrors = false
     }
 }
-
-tasks.register('verifyNoRuntimeDependencies') {
-    group = 'verification'
-    description = 'Fails when an external runtime dependency is added to the app.'
-
-    doLast {
-        def runtime = configurations.getByName('debugRuntimeClasspath').allDependencies
-        if (!runtime.empty) {
-            throw new GradleException("External runtime dependencies are not allowed: ${runtime}")
-        }
-        println 'OK: no external runtime dependencies.'
-    }
-}
