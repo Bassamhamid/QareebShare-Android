@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/background"
+    android:layoutDirection="rtl"
+    android:orientation="vertical"
+    android:padding="@dimen/screen_padding">
+
+    <ImageButton android:id="@+id/button_back" android:layout_width="48dp" android:layout_height="48dp" android:background="@drawable/bg_brand_soft" android:contentDescription="@string/back" android:padding="12dp" android:src="@drawable/ic_back" />
+    <TextView style="@style/Text.Title" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="18dp" android:text="@string/apps_title" />
+    <TextView style="@style/Text.Subtitle" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:text="@string/apps_subtitle" />
+
+    <ProgressBar android:id="@+id/progress_apps" style="?android:attr/progressBarStyle" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_gravity="center_horizontal" android:layout_marginTop="28dp" />
+    <TextView android:id="@+id/text_apps_state" style="@style/Text.CardBody" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:gravity="center" android:text="@string/apps_loading" />
+
+    <ListView
+        android:id="@+id/list_apps"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_marginTop="16dp"
+        android:layout_weight="1"
+        android:clipToPadding="false"
+        android:divider="@color/transparent"
+        android:dividerHeight="10dp"
+        android:paddingBottom="10dp"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/text_apps_selected"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@drawable/bg_primary_button"
+        android:gravity="center"
+        android:text="@string/apps_selected_none"
+        android:textColor="@color/white"
+        android:textSize="16sp"
+        android:textStyle="bold" />
+</LinearLayout>

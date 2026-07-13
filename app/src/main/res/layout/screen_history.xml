@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/background"
+    android:gravity="center_horizontal"
+    android:layoutDirection="rtl"
+    android:orientation="vertical"
+    android:padding="@dimen/screen_padding">
+
+    <ImageButton android:id="@+id/button_back" android:layout_width="48dp" android:layout_height="48dp" android:layout_gravity="start" android:background="@drawable/bg_brand_soft" android:contentDescription="@string/back" android:padding="12dp" android:src="@drawable/ic_back" />
+    <TextView style="@style/Text.Title" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="20dp" android:text="@string/history_title" />
+
+    <ImageView android:layout_width="84dp" android:layout_height="84dp" android:layout_marginTop="54dp" android:background="@drawable/bg_brand_soft" android:contentDescription="@string/history" android:padding="24dp" android:src="@drawable/ic_history" />
+    <TextView style="@style/Text.CardTitle" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="20dp" android:text="@string/history_empty" />
+    <TextView style="@style/Text.CardBody" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:gravity="center" android:text="@string/history_empty_description" />
+</LinearLayout>

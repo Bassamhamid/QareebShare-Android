@@ -1,0 +1,61 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace = 'com.bassam.qareebshare'
+    compileSdk = 37
+
+    defaultConfig {
+        applicationId = 'com.bassam.qareebshare'
+        minSdk = 23
+        targetSdk = 37
+        versionCode = 2
+        versionName = '0.2.0'
+
+        vectorDrawables {
+            useSupportLibrary = false
+        }
+    }
+
+    buildTypes {
+        debug {
+            applicationIdSuffix = '.debug'
+            versionNameSuffix = '-debug'
+        }
+        release {
+            minifyEnabled = true
+            shrinkResources = true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_1_8
+        targetCompatibility = JavaVersion.VERSION_1_8
+    }
+
+    buildFeatures {
+        buildConfig = true
+        viewBinding = false
+    }
+
+    lint {
+        abortOnError = true
+        checkReleaseBuilds = true
+        warningsAsErrors = false
+    }
+}
+
+tasks.register('verifyNoRuntimeDependencies') {
+    group = 'verification'
+    description = 'Fails when an external runtime dependency is added to the app.'
+
+    doLast {
+        def runtime = configurations.getByName('debugRuntimeClasspath').allDependencies
+        if (!runtime.empty) {
+            throw new GradleException("External runtime dependencies are not allowed: ${runtime}")
+        }
+        println 'OK: no external runtime dependencies.'
+    }
+}

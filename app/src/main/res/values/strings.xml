@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">قريب شير</string>
+    <string name="home_title">شارك بسرعة، بدون إنترنت</string>
+    <string name="home_subtitle">انقل ملفاتك وتطبيقاتك مباشرة إلى هاتف قريب.</string>
+    <string name="send">إرسال</string>
+    <string name="send_description">اختر ملفات أو تطبيقات من هذا الهاتف</string>
+    <string name="receive">استقبال</string>
+    <string name="receive_description">استقبل من هاتف قريب بعد الاتصال</string>
+    <string name="history">السجل</string>
+    <string name="history_description">عمليات النقل المكتملة على هذا الهاتف</string>
+    <string name="privacy_note">لا تُرفع ملفاتك إلى أي خادم</string>
+
+    <string name="back">رجوع</string>
+    <string name="send_title">اختر ثم اتصل</string>
+    <string name="send_subtitle">حدد الملفات أو التطبيقات، ثم ابحث عن الهاتف المستقبل.</string>
+    <string name="files">الملفات</string>
+    <string name="files_description">صور، فيديو، مستندات أو أي ملف</string>
+    <string name="applications">التطبيقات</string>
+    <string name="applications_description">التطبيقات التي ثبّتها المستخدم فقط</string>
+    <string name="selected_files_none">لا ملفات</string>
+    <string name="selected_files_count">%1$d ملف</string>
+    <string name="selected_files_count_many">%1$d ملفات</string>
+    <string name="choose_items_first">اختر ملفاً أو تطبيقاً واحداً على الأقل.</string>
+    <string name="find_nearby_device">البحث عن هاتف قريب</string>
+    <string name="select_then_search">اختر ما تريد إرساله ثم ابدأ البحث.</string>
+    <string name="searching_nearby_devices">جارٍ البحث عن الهواتف القريبة…</string>
+    <string name="no_nearby_devices">لم يظهر هاتف قريب. افتح الاستقبال في الهاتف الآخر ثم أعد البحث.</string>
+    <string name="nearby_devices_count">تم العثور على %1$d أجهزة قريبة</string>
+    <string name="nearby_device">هاتف قريب</string>
+    <string name="connecting_to_device">جارٍ الاتصال بـ %1$s…</string>
+    <string name="connected_to_device">تم الاتصال بـ %1$s</string>
+
+    <string name="apps_title">اختر التطبيقات</string>
+    <string name="apps_subtitle">تطبيقات النظام مخفية تلقائياً.</string>
+    <string name="apps_loading">جارٍ قراءة التطبيقات…</string>
+    <string name="apps_empty">لم يتم العثور على تطبيقات قابلة للمشاركة.</string>
+    <string name="apps_selected_none">لا تطبيقات</string>
+    <string name="apps_selected_count">%1$d تطبيق</string>
+    <string name="apps_selected_count_many">%1$d تطبيقات</string>
+    <string name="selection_saved">تم حفظ الاختيار داخل هذه الجلسة.</string>
+
+    <string name="receive_title">استقبال من هاتف قريب</string>
+    <string name="receive_subtitle">افتح الاستقبال، ثم اختر هذا الهاتف من جهاز المرسل.</string>
+    <string name="start_receiving">بدء الاستقبال</string>
+    <string name="stop_receiving">إيقاف الاستقبال</string>
+    <string name="receiver_not_started">الاستقبال متوقف</string>
+    <string name="receive_preparing">جارٍ تجهيز الاتصال…</string>
+    <string name="receiver_ready">الهاتف جاهز للاستقبال</string>
+    <string name="receiver_waiting_for_peer">بانتظار اتصال الهاتف الآخر</string>
+    <string name="receive_stopped">تم إيقاف الاستقبال</string>
+    <string name="receiver_privacy_note">يظل الهاتف ظاهراً للأجهزة القريبة فقط أثناء فتح وضع الاستقبال.</string>
+    <string name="no_connected_device">لا يوجد هاتف متصل</string>
+    <string name="device_connected">تم اتصال الهاتف الآخر</string>
+
+    <string name="peer_available">جاهز للاتصال</string>
+    <string name="peer_invited">بانتظار قبول الاتصال</string>
+    <string name="peer_connected">متصل</string>
+    <string name="peer_failed">تعذر الاتصال</string>
+    <string name="peer_unavailable">غير متاح الآن</string>
+
+    <string name="wifi_direct_supported">الهاتف يدعم الاتصال المباشر عبر Wi‑Fi.</string>
+    <string name="wifi_direct_not_supported">هذا الهاتف لا يدعم الاتصال المباشر عبر Wi‑Fi.</string>
+    <string name="nearby_permission_required">يلزم السماح بالعثور على الأجهزة القريبة لإكمال الاتصال.</string>
+    <string name="location_services_required">في هذا الإصدار من أندرويد يجب تشغيل خدمة الموقع أثناء البحث عن الأجهزة القريبة.</string>
+    <string name="enable_wifi">شغّل Wi‑Fi ثم حاول مرة أخرى.</string>
+    <string name="connection_busy">الاتصال مشغول الآن. أوقف المحاولة السابقة ثم أعد المحاولة.</string>
+    <string name="connection_failed">تعذر إنشاء الاتصال. قرّب الهاتفين وحاول مرة أخرى.</string>
+    <string name="connection_channel_lost">توقف الاتصال المباشر. أعد فتح الشاشة وحاول مرة أخرى.</string>
+    <string name="establishing_secure_channel">تم ربط الهاتفين، جارٍ التحقق من الاتصال المحلي…</string>
+    <string name="handshake_failed">تم ربط Wi‑Fi لكن تعذر فتح قناة النقل. أعد المحاولة.</string>
+    <string name="connection_stopped">تم إنهاء الاتصال.</string>
+
+    <string name="history_title">السجل</string>
+    <string name="history_empty">لا توجد عمليات نقل حتى الآن.</string>
+    <string name="history_empty_description">ستظهر هنا الملفات والتطبيقات التي تم إرسالها أو استقبالها.</string>
+
+    <string name="unknown_file">ملف</string>
+    <string name="unknown_size">الحجم غير معروف</string>
+    <string name="permission_unavailable">تعذر الاحتفاظ بإذن قراءة أحد الملفات.</string>
+</resources>
