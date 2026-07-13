@@ -79,7 +79,29 @@ final class AppInstaller {
             TransferHistoryStore.AppPackage appPackage
     ) throws Exception {
         ArrayList<TransferHistoryStore.StoredItem> parts = new ArrayList<>(appPackage.parts);
-        Collections.sort(parts, Comparator.comparingInt(AppInstaller::partOrder));
+        Collections.sort(
+                parts,
+                new Comparator<TransferHistoryStore.StoredItem>() {
+                    @Override
+                    public int compare(
+                            TransferHistoryStore.StoredItem left,
+                            TransferHistoryStore.StoredItem right
+                    ) {
+                        int leftOrder = partOrder(left);
+                        int rightOrder = partOrder(right);
+
+                        if (leftOrder < rightOrder) {
+                            return -1;
+                        }
+
+                        if (leftOrder > rightOrder) {
+                            return 1;
+                        }
+
+                        return 0;
+                    }
+                }
+        );
         long totalSize = 0L;
         boolean hasBase = false;
         for (TransferHistoryStore.StoredItem item : parts) {
