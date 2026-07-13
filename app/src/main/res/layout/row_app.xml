@@ -13,5 +13,5 @@
         <TextView android:id="@+id/app_label" style="@style/Text.CardTitle" android:layout_width="match_parent" android:layout_height="wrap_content" android:ellipsize="end" android:maxLines="1" android:textSize="17sp" />
         <TextView android:id="@+id/app_package" style="@style/Text.CardBody" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="3dp" android:ellipsize="middle" android:maxLines="1" android:textDirection="ltr" />
     </LinearLayout>
-    <TextView android:id="@+id/app_check" android:layout_width="28dp" android:layout_height="28dp" android:gravity="center" android:text="✓" android:textColor="@color/white" android:textSize="18sp" android:textStyle="bold" />
+    <TextView android:id="@+id/app_check" android:layout_width="28dp" android:layout_height="28dp" android:gravity="center" android:text="@string/selection_mark" android:textColor="@color/white" android:textSize="18sp" android:textStyle="bold" />
 </LinearLayout>

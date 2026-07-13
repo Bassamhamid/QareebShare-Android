@@ -120,7 +120,7 @@ public final class MainActivity extends Activity implements WifiDirectEvents {
     }
 
     private static final class Api33BackHandler {
-        @android.annotation.TargetApi(Build.VERSION_CODES.TIRAMISU)
+        @SuppressLint("NewApi")
         private static void register(MainActivity activity) {
             activity.getOnBackInvokedDispatcher()
                     .registerOnBackInvokedCallback(

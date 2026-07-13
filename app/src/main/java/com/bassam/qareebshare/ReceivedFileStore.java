@@ -153,6 +153,7 @@ final class ReceivedFileStore {
         deleteStale(root, cutoff);
     }
 
+    @android.annotation.SuppressLint("NewApi")
     private static StoredLocation publishMediaStore(
             Context context,
             TransferItemInfo item,

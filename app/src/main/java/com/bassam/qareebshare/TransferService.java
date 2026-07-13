@@ -171,10 +171,7 @@ public final class TransferService extends Service {
     }
 
     private int pendingIntentFlags(int base) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            return base | PendingIntent.FLAG_IMMUTABLE;
-        }
-        return base;
+        return base | PendingIntent.FLAG_IMMUTABLE;
     }
 
     private void ensureChannel() {

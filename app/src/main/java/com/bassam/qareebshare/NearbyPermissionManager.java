@@ -53,6 +53,7 @@ final class NearbyPermissionManager {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             addIfMissing(activity, permissions, Manifest.permission.NEARBY_WIFI_DEVICES);
         } else {
+            addIfMissing(activity, permissions, Manifest.permission.ACCESS_COARSE_LOCATION);
             addIfMissing(activity, permissions, Manifest.permission.ACCESS_FINE_LOCATION);
         }
         if (Build.VERSION.SDK_INT >= 37) {
