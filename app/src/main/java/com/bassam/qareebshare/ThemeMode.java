@@ -27,11 +27,12 @@ final class ThemeMode {
         preferences(context).edit().putInt(KEY_MODE, mode).apply();
     }
 
-    @SuppressWarnings("deprecation")
     static void apply(Activity activity) {
         int selected = get(activity);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            UiModeManager manager = (UiModeManager) activity.getSystemService(Context.UI_MODE_SERVICE);
+            UiModeManager manager = (UiModeManager) activity.getSystemService(
+                    Context.UI_MODE_SERVICE
+            );
             if (manager != null) {
                 int value;
                 if (selected == LIGHT) {
@@ -46,19 +47,18 @@ final class ThemeMode {
             return;
         }
 
-        Resources resources = activity.getResources();
-        Configuration configuration = new Configuration(resources.getConfiguration());
+        Configuration override = new Configuration(activity.getResources().getConfiguration());
         int nightMask;
         if (selected == LIGHT) {
             nightMask = Configuration.UI_MODE_NIGHT_NO;
         } else if (selected == DARK) {
             nightMask = Configuration.UI_MODE_NIGHT_YES;
         } else {
-            return;
+            nightMask = Resources.getSystem().getConfiguration().uiMode
+                    & Configuration.UI_MODE_NIGHT_MASK;
         }
-        configuration.uiMode = (configuration.uiMode & ~Configuration.UI_MODE_NIGHT_MASK)
-                | nightMask;
-        resources.updateConfiguration(configuration, resources.getDisplayMetrics());
+        override.uiMode = (override.uiMode & ~Configuration.UI_MODE_NIGHT_MASK) | nightMask;
+        activity.applyOverrideConfiguration(override);
     }
 
     private static SharedPreferences preferences(Context context) {

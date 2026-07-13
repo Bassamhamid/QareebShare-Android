@@ -1,4 +1,4 @@
-#!/data/data/com.termux/files/usr/bin/bash
+#!/usr/bin/env bash
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -9,94 +9,116 @@ fail() {
   exit 1
 }
 
-required=(
-  "BATCH_04.md"
-  "TESTING.md"
-  "app/src/main/java/com/bassam/qareebshare/CryptoSession.java"
-  "app/src/main/java/com/bassam/qareebshare/SecureChannel.java"
-  "app/src/main/java/com/bassam/qareebshare/TransferEngine.java"
-  "app/src/main/java/com/bassam/qareebshare/ReceivedFileStore.java"
-  "app/src/main/java/com/bassam/qareebshare/TransferHistoryStore.java"
-  "app/src/main/java/com/bassam/qareebshare/AppInstaller.java"
-  "app/src/main/java/com/bassam/qareebshare/InstallResultReceiver.java"
-  "app/src/main/java/com/bassam/qareebshare/HistoryAdapter.java"
-  "app/src/main/res/layout/row_history.xml"
-  "app/src/main/res/layout/screen_history.xml"
-)
+bash scripts/check-project.sh >/dev/null
+bash scripts/check-rebuild-batch1.sh >/dev/null
 
-for file in "${required[@]}"; do
-  [[ -f "$file" ]] || fail "الملف مفقود: $file"
-done
-
-grep -q "versionName = '0.4.0'" app/build.gradle || fail "الإصدار النهائي غير مضبوط"
-grep -q "versionCode = 4" app/build.gradle || fail "versionCode النهائي غير مضبوط"
-grep -q "MAGIC = 0x51534834" app/src/main/java/com/bassam/qareebshare/TransferEngine.java || fail "بروتوكول QSH4 غير موجود"
-grep -q 'KeyAgreement.getInstance("ECDH")' app/src/main/java/com/bassam/qareebshare/CryptoSession.java || fail "تبادل مفاتيح ECDH غير موجود"
-grep -q 'Cipher.getInstance("AES/GCM/NoPadding")' app/src/main/java/com/bassam/qareebshare/SecureChannel.java || fail "تشفير AES-GCM غير موجود"
-grep -q "resumeOffset" app/src/main/java/com/bassam/qareebshare/ReceivedFileStore.java || fail "استكمال النقل غير موجود"
-grep -q "RandomAccessFile" app/src/main/java/com/bassam/qareebshare/ReceivedFileStore.java || fail "الكتابة من موضع الاستكمال غير موجودة"
-grep -q "PackageInstaller.Session" app/src/main/java/com/bassam/qareebshare/AppInstaller.java || fail "تثبيت التطبيقات المقسمة غير موجود"
-grep -q "SQLiteOpenHelper" app/src/main/java/com/bassam/qareebshare/TransferHistoryStore.java || fail "سجل النقل المحلي غير موجود"
-grep -q 'android.intent.action.SEND_MULTIPLE' app/src/main/AndroidManifest.xml || fail "المشاركة المتعددة من أندرويد غير موجودة"
-grep -q 'android.permission.REQUEST_INSTALL_PACKAGES' app/src/main/AndroidManifest.xml || fail "صلاحية عرض تثبيت التطبيقات غير موجودة"
-grep -q 'android.permission.ACCESS_LOCAL_NETWORK' app/src/main/AndroidManifest.xml || fail "صلاحية Android 17 للشبكة المحلية غير موجودة"
-grep -q "workflow_dispatch" .github/workflows/android.yml || fail "البناء اليدوي غير موجود"
-
-if grep -Eq '^[[:space:]]*(push|pull_request):' .github/workflows/android.yml; then
-  fail "البناء يعمل تلقائياً عند الدفع"
-fi
-
-if grep -R --line-number --include='build.gradle' -E '^[[:space:]]*(implementation|api|compileOnly|runtimeOnly|debugImplementation|releaseImplementation)[[:space:]]' .; then
-  fail "تم العثور على مكتبة خارجية داخل التطبيق"
-fi
-
-if command -v python >/dev/null 2>&1; then
 python - <<'PY'
 from pathlib import Path
 import re
 import xml.etree.ElementTree as ET
 
 root = Path('.')
+
+# Every text file in the repository must be clean; do not rely only on git diff.
+extensions = {'.java', '.xml', '.gradle', '.properties', '.yml', '.yaml', '.sh', '.md', '.txt'}
+for path in root.rglob('*'):
+    if not path.is_file() or '.git' in path.parts:
+        continue
+    if path.suffix not in extensions and path.name not in {'gradlew'}:
+        continue
+    text = path.read_text(encoding='utf-8')
+    for number, line in enumerate(text.splitlines(), 1):
+        if line.endswith((' ', '\t')):
+            raise SystemExit(f'Trailing whitespace: {path}:{number}')
+
+build = (root / 'app/build.gradle').read_text(encoding='utf-8')
+version_code = re.search(r"versionCode\s*=\s*(\d+)", build)
+version_name = re.search(r"versionName\s*=\s*'([^']+)'", build)
+min_sdk = re.search(r"minSdk\s*=\s*(\d+)", build)
+target_sdk = re.search(r"targetSdk\s*=\s*(\d+)", build)
+if not version_code or int(version_code.group(1)) < 1:
+    raise SystemExit('versionCode is invalid')
+if not version_name or not re.fullmatch(r'\d+\.\d+\.\d+', version_name.group(1)):
+    raise SystemExit('versionName is invalid')
+if not min_sdk or min_sdk.group(1) != '23':
+    raise SystemExit('minSdk must remain 23')
+if not target_sdk or target_sdk.group(1) != '37':
+    raise SystemExit('targetSdk must remain 37')
+
 manifest = root / 'app/src/main/AndroidManifest.xml'
 ET.parse(manifest)
 for path in (root / 'app/src/main/res').rglob('*.xml'):
     ET.parse(path)
 
-strings_root = ET.parse(root / 'app/src/main/res/values/strings.xml').getroot()
-strings = {node.attrib['name'] for node in strings_root.findall('string')}
-refs = set()
+# Collect resources across every values and values-night file.
+strings = set()
+styles = set()
+colors = set()
+for path in (root / 'app/src/main/res').glob('values*/*.xml'):
+    tree = ET.parse(path).getroot()
+    for node in tree:
+        name = node.attrib.get('name')
+        if not name:
+            continue
+        if node.tag in {'string', 'string-array'}:
+            strings.add(name)
+        elif node.tag == 'style':
+            styles.add(name)
+        elif node.tag == 'color':
+            colors.add(name)
+
+string_refs = set()
+style_refs = set()
+color_refs = set()
 for path in list((root / 'app/src/main/java').rglob('*.java')) + list((root / 'app/src/main/res').rglob('*.xml')):
     text = path.read_text(encoding='utf-8')
-    refs.update(re.findall(r'R\.string\.([A-Za-z0-9_]+)', text))
-    refs.update(re.findall(r'@string/([A-Za-z0-9_]+)', text))
-missing = sorted(refs - strings)
-if missing:
-    raise SystemExit('Missing string resources: ' + ', '.join(missing))
+    string_refs.update(re.findall(r'R\.string\.([A-Za-z0-9_]+)', text))
+    string_refs.update(re.findall(r'@string/([A-Za-z0-9_]+)', text))
+    style_refs.update(re.findall(r'@style/([A-Za-z0-9_.]+)', text))
+    color_refs.update(re.findall(r'@color/([A-Za-z0-9_]+)', text))
 
-java_root = root / 'app/src/main/java/com/bassam/qareebshare'
-classes = {p.stem for p in java_root.glob('*.java')}
-manifest_text = manifest.read_text(encoding='utf-8')
-for class_name in re.findall(r'android:name="\.([A-Za-z0-9_]+)"', manifest_text):
-    if class_name not in classes:
-        raise SystemExit('Manifest class is missing: ' + class_name)
+missing_strings = sorted(string_refs - strings)
+missing_styles = sorted(style_refs - styles)
+missing_colors = sorted(color_refs - colors)
+if missing_strings:
+    raise SystemExit('Missing strings: ' + ', '.join(missing_strings))
+if missing_styles:
+    raise SystemExit('Missing styles: ' + ', '.join(missing_styles))
+if missing_colors:
+    raise SystemExit('Missing colors: ' + ', '.join(missing_colors))
 
-print('XML and resource references: OK')
+workflow = (root / '.github/workflows/android.yml').read_text(encoding='utf-8')
+required_actions = {
+    'actions/checkout@v7',
+    'actions/setup-java@v6',
+    'android-actions/setup-android@v4',
+    'gradle/actions/setup-gradle@v6',
+    'actions/upload-artifact@v6',
+}
+missing_actions = sorted(action for action in required_actions if action not in workflow)
+if missing_actions:
+    raise SystemExit('Workflow action is stale or missing: ' + ', '.join(missing_actions))
+if re.search(r'^\s*(push|pull_request):', workflow, re.MULTILINE):
+    raise SystemExit('Workflow must remain manual-only')
+if 'if: always()\n        uses: actions/upload-artifact@v6\n        with:\n          name: qareeb-share-apks' in workflow:
+    raise SystemExit('APK upload must not run after a failed build')
+
+print('Repository structure and resources: OK')
+print(f"Version: {version_name.group(1)} ({version_code.group(1)})")
 PY
-else
-  echo 'XML/resource validation: skipped (Python is not installed)'
+
+if grep -R --line-number --include='build.gradle' -E \
+  '^[[:space:]]*(implementation|api|compileOnly|runtimeOnly|debugImplementation|releaseImplementation)[[:space:]]' .; then
+  fail "تم العثور على مكتبة خارجية داخل التطبيق"
 fi
 
-./scripts/check-project.sh >/dev/null
-
 echo "========================================"
-echo "QAREEB SHARE FINAL BATCH CHECK: OK"
-echo "Encrypted protocol QSH4: present"
-echo "Pairing code verification: present"
-echo "Interrupted transfer resume: present"
-echo "Base and Split APK installation: present"
-echo "Local transfer history: present"
-echo "Incoming Android sharing: present"
-echo "Build trigger: manual only"
+echo "QAREEB SHARE REVIEWED CHECK: OK"
+echo "Rebuild batch 1 checks: OK"
+echo "Version checks: dynamic"
+echo "Repository whitespace: clean"
+echo "Workflow: Node 24 actions"
+echo "APK upload: only after successful build and lint"
 echo "Runtime libraries: none"
-echo "No APK was built"
+echo "No APK was built locally"
 echo "========================================"

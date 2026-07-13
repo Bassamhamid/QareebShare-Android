@@ -42,6 +42,13 @@ final class SessionPeerAdapter extends BaseAdapter {
     }
 
     @Override
+    public boolean isEnabled(int position) {
+        return position >= 0
+                && position < items.size()
+                && items.get(position).isAvailable();
+    }
+
+    @Override
     public View getView(int position, View convertView, ViewGroup parent) {
         ViewHolder holder;
         if (convertView == null) {
